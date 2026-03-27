@@ -40,7 +40,7 @@ This project is in the scope of a Distribuited Systems Development course. **Dra
 
 <!-- ## API -->
 
-## Maintainers -->
+## Maintainers
 
 - Caio Bernardo
 - Lucas Farias
