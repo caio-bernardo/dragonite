@@ -1,0 +1,15 @@
+services:
+  psql_dragonite:
+    image: postgres:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DRAGONITE_DB_DATABASE}
+      POSTGRES_USER: ${DRAGONITE_DB_USERNAME}
+      POSTGRES_PASSWORD: ${DRAGONITE_DB_PASSWORD}
+    ports:
+      - "${DRAGONITE_DB_PORT}:5432"
+    volumes:
+      - psql_volume_dragonite:/var/lib/postgresql/data
+
+volumes:
+  psql_volume_dragonite:
