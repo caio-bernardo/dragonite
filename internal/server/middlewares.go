@@ -1,6 +1,16 @@
 package server
 
-import "net/http"
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+// reponseWriter é uma estrutura auxiliar pra incluir o statusCode na resposta
+type responseWriter struct {
+	statusCode int
+	http.ResponseWriter
+}
 
 // Middleware que gerencia o cabeçalho de CORS
 func (s *AppServer) corsMiddleware(next http.Handler) http.Handler {
@@ -20,4 +30,23 @@ func (s *AppServer) corsMiddleware(next http.Handler) http.Handler {
 		// Proceed with the next handler
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Middleware para logar o resultado das requisições
+func (s *AppServer) logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
+
+		res := responseWriter{statusCode: http.StatusOK, ResponseWriter: w}
+
+		next.ServeHTTP(&res, r)
+
+		log.Printf("[%s] %s %d %s in %s", r.Method, r.URL.Path, res.statusCode, http.StatusText(res.statusCode), time.Since(now))
+	})
+}
+
+// WriteHeader é uma implementação personalizada de WriteHeader que armazena o statusCode
+func (w *responseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
 }
