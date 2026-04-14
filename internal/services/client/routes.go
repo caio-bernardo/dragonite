@@ -3,44 +3,47 @@ package client
 import (
 	"net/http"
 
+	"github.com/caio-bernardo/dragonite/internal/repository"
 	"github.com/caio-bernardo/dragonite/internal/services/client/auth"
-	"github.com/caio-bernardo/dragonite/internal/utils"
+	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
 type Handler struct {
+	userStore repository.UserStore
 }
 
-func NewHandler() *Handler {
-	return &Handler{}
+func NewHandler(userStore repository.UserStore) *Handler {
+	return &Handler{userStore: userStore}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	auth := auth.NewHandler()
+
+	auth := auth.NewHandler(h.userStore)
 
 	mux.HandleFunc("GET /_matrix/client/versions", h.getVersions)
-	// autenticação
 
+	// autenticação
 	auth.RegisterRoutes(mux)
 
 	// sincronização de dados
-	mux.HandleFunc("GET /_matrix/client/sync", utils.UnimplementedHandler) // WARN: esse é o dificil
+	mux.HandleFunc("GET /_matrix/client/sync", util.UnimplementedHandler) // WARN: esse é o dificil
 
 	// chats
-	mux.HandleFunc("GET /_matrix/client/v3/publicRooms", utils.UnimplementedHandler)
+	mux.HandleFunc("GET /_matrix/client/v3/publicRooms", util.UnimplementedHandler)
 
 	// manipulação de chat
-	mux.HandleFunc("POST /_matrix/client/v3/createRoom", utils.UnimplementedHandler)
-	mux.HandleFunc("POST /_matrix/client/v3/rooms/{roomId}/join", utils.UnimplementedHandler)
-	mux.HandleFunc("POST /_matrix/client/v3/rooms/{roomId}/leave", utils.UnimplementedHandler)
+	mux.HandleFunc("POST /_matrix/client/v3/createRoom", util.UnimplementedHandler)
+	mux.HandleFunc("POST /_matrix/client/v3/rooms/{roomId}/join", util.UnimplementedHandler)
+	mux.HandleFunc("POST /_matrix/client/v3/rooms/{roomId}/leave", util.UnimplementedHandler)
 
 	// troca de eventos
-	mux.HandleFunc("PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}", utils.UnimplementedHandler)
-	mux.HandleFunc("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}", utils.UnimplementedHandler)
+	mux.HandleFunc("PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}", util.UnimplementedHandler)
+	mux.HandleFunc("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}", util.UnimplementedHandler)
 }
 
 func (h *Handler) getVersions(w http.ResponseWriter, r *http.Request) {
 	response := SupportedVersionsResponse{
 		Versions: []string{"r0.0.5", "v1.18"},
 	}
-	utils.WriteJSON(w, 200, response)
+	util.WriteJSON(w, 200, response)
 }

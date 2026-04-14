@@ -1,5 +1,7 @@
 package model
 
+import "fmt"
+
 type Usuario struct {
 	ID          string `json:"id_usuario"`
 	Nome        string `json:"nome_usuario"`
@@ -29,4 +31,8 @@ func (uc UsuarioCreate) ToUsuario() Usuario {
 		Host:        uc.Host,
 		DataCriacao: uc.DataCriacao,
 	}
+}
+
+func (u *Usuario) GetMatrixUserID() string {
+	return fmt.Sprintf("@%s:%s", u.Nome, u.Host)
 }

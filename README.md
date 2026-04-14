@@ -86,6 +86,48 @@ make run
 
 <!-- ## EXtra Sections -->
 
+## Project Organization
+
+```sh
+.
+├── air.toml
+├── cmd
+├── docker-compose.yml
+├── frontend
+├── go.mod
+├── go.sum
+├── internal
+│    ├── database
+│    ├── model
+│    ├── repository
+│    ├── server
+│    ├── services
+│    │    ├── client
+│    │    └── server
+│    ├── services
+│    ├── types
+│    └── util
+├── LICENSE
+├── Makefile
+├── migrations
+├── README.md
+└── static
+```
+
+- **cmd/api**: entrypoint to run the server
+- **frontend**: directory containing the client webapp
+- **internal**: source code for the server
+- **internal/database**: database connection service
+- **internal/model**: data models
+- **internal/repository**: interfaces and implementations for database access
+- **internal/server**: implementation of the HTTP server
+- **internal/services**: Business Logic
+- **internal/services/client**: implementation of Client-Server communication
+- **internal/services/server**: implementation of Server-Server communication
+- **types**: common types (like errors)
+- **util**: useful functions to parse JSON, SQL, etc.
+- **migrations**: SQL scripts
+
 <!-- ## API -->
 
 ## Maintainers

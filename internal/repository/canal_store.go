@@ -1,22 +1,30 @@
-package canal
+package repository
 
 import (
 	"context"
 	"database/sql"
-	"dragonite/internal/model"
-	"dragonite/internal/types"
-	"dragonite/internal/util"
+
+	"github.com/caio-bernardo/dragonite/internal/model"
+	"github.com/caio-bernardo/dragonite/internal/types"
+	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
-type Store struct {
+type ChannelStore interface {
+	GetAll(ctx context.Context, filter util.Filter) ([]model.Canal, error)
+	GetByID(ctx context.Context, id int64) (*model.Canal, error)
+	Create(ctx context.Context, props *model.Canal) error
+	Delete(ctx context.Context, id_canal int64) (*model.Canal, error)
+}
+
+type canalStore struct {
 	db *sql.DB
 }
 
-func NewStore(db *sql.DB) *Store {
-	return &Store{db}
+func NewChannelStore(db *sql.DB) ChannelStore {
+	return &canalStore{db}
 }
 
-func (s *Store) GetAll(ctx context.Context, filter util.Filter) ([]model.Canal, error) {
+func (s *canalStore) GetAll(ctx context.Context, filter util.Filter) ([]model.Canal, error) {
 	query := "SELECT id_canal, nome_canal, descricao_canal, foto_canal FROM canal"
 
 	rows, err := util.QueryRowsWithFilter(s.db, ctx, query, &filter, "io")
@@ -37,7 +45,7 @@ func (s *Store) GetAll(ctx context.Context, filter util.Filter) ([]model.Canal, 
 	return canal, nil
 }
 
-func (s *Store) GetByID(ctx context.Context, id int64) (*model.Canal, error) {
+func (s *canalStore) GetByID(ctx context.Context, id int64) (*model.Canal, error) {
 	query := "SELECT id_canal, nome_canal, descricao_canal, foto_canal FROM canal WHERE id_canal = $1;"
 	row := s.db.QueryRowContext(ctx, query, id)
 
@@ -52,13 +60,13 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*model.Canal, error) {
 	return &c, nil
 }
 
-func (s *Store) Create(ctx context.Context, props *model.Canal) error {
+func (s *canalStore) Create(ctx context.Context, props *model.Canal) error {
 	query := "INSERT INTO canal (id_canal, nome_canal, descricao_canal, foto_canal) VALUES ($1, $2, $3, $4);"
 	_, err := s.db.ExecContext(ctx, query, props.ID, props.Nome, props.Descricao, props.Foto)
 	return err
 }
 
-func (s *Store) Update(ctx context.Context, props *model.Canal) error {
+func (s *canalStore) Update(ctx context.Context, props *model.Canal) error {
 	query := "UPDATE canal SET nome_canal = $1, descricao_canal = $2, foto_canal = $3 WHERE id_canal = $4"
 	res, err := s.db.ExecContext(ctx, query, props.Nome, props.Descricao, props.Foto, props.ID)
 	if err != nil {
@@ -75,7 +83,7 @@ func (s *Store) Update(ctx context.Context, props *model.Canal) error {
 	return nil
 }
 
-func (s *Store) Delete(ctx context.Context, id_canal int64) (*model.Canal, error) {
+func (s *canalStore) Delete(ctx context.Context, id_canal int64) (*model.Canal, error) {
 	canal, err := s.GetByID(ctx, id_canal)
 	if err != nil {
 		return nil, err

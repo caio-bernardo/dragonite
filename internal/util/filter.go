@@ -149,10 +149,10 @@ func (ff *Filter) GetFilterTime(params url.Values, key string) error {
 	if params.Get(filterKey) != "" {
 		parts := strings.Split(params.Get(filterKey), ".")
 		if len(parts) != 2 {
-			return errors.New(fmt.Sprintf("Invalid query param `%s`", filterKey))
+			return fmt.Errorf("Invalid query param `%s`", filterKey)
 		}
 		if !IsOperatorForNumber(parts[0]) {
-			return errors.New(fmt.Sprintf("Invalid operator for query `%s`", filterKey))
+			return fmt.Errorf("Invalid operator for query `%s`", filterKey)
 		}
 
 		v, err := time.Parse("2006-01-02 15:04:05", parts[1])
@@ -170,39 +170,39 @@ func (ff *Filter) GetFilterTime(params url.Values, key string) error {
 // Cria uma sql query apartir de Filter e adiciona valores para preencher a query em values
 func (ff *Filter) ToQuery(values *[]any, tableAlias string) string {
 	// condições
-	var query string
+	var query strings.Builder
 	i := 0
 	for k, v := range ff.Filters {
 		if i == 0 {
-			query += " WHERE"
+			query.WriteString(" WHERE")
 		} else {
-			query += " AND"
+			query.WriteString(" AND")
 		}
 		switch v.Operator {
 		case "lt":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s < $%d", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s < $%d", tableAlias, k, len(*values))
 		case "gt":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s > $%d", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s > $%d", tableAlias, k, len(*values))
 		case "eq":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s = $%d", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s = $%d", tableAlias, k, len(*values))
 		case "le":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s <= $%d", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s <= $%d", tableAlias, k, len(*values))
 		case "ge":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s >= $%d", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s >= $%d", tableAlias, k, len(*values))
 		case "ne":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s != $%d", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s != $%d", tableAlias, k, len(*values))
 		case "like":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s LIKE '%%' || $%d || '%%'", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s LIKE '%%' || $%d || '%%'", tableAlias, k, len(*values))
 		case "ilike":
 			*values = append(*values, v.Value)
-			query += fmt.Sprintf(" %s.%s ILIKE '%%' || $%d || '%%'", tableAlias, k, len(*values))
+			fmt.Fprintf(&query, " %s.%s ILIKE '%%' || $%d || '%%'", tableAlias, k, len(*values))
 		default:
 			return ""
 		}
@@ -212,28 +212,28 @@ func (ff *Filter) ToQuery(values *[]any, tableAlias string) string {
 	// ordenação
 	for i, v := range ff.Sorts {
 		if i == 0 {
-			query += " ORDER BY"
+			query.WriteString(" ORDER BY")
 		} else {
-			query += ","
+			query.WriteString(",")
 		}
 
 		str, fminus := strings.CutPrefix(v, "-")
-		query += " " + str
+		query.WriteString(" " + str)
 		if fminus {
-			query += " DESC"
+			query.WriteString(" DESC")
 		}
 	}
 
 	// paginação
 	if ff.Offset > 0 {
 		*values = append(*values, ff.Offset)
-		query += " OFFSET $" + strconv.Itoa(len(*values))
+		query.WriteString(" OFFSET $" + strconv.Itoa(len(*values)))
 	}
 	if ff.Limit > 0 {
 		*values = append(*values, ff.Limit)
-		query += " LIMIT $" + strconv.Itoa(len(*values))
+		query.WriteString(" LIMIT $" + strconv.Itoa(len(*values)))
 	}
-	return query
+	return query.String()
 }
 
 func IsOperatorForStr(op string) bool {

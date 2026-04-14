@@ -5,14 +5,18 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/caio-bernardo/dragonite/internal/repository"
 	"github.com/caio-bernardo/dragonite/internal/services/client"
 )
 
 // Registra os endpoints do servidor
 func (s *AppServer) RegisterRoutes() http.Handler {
+	// repositorios
+	userStore := repository.NewUsuarioStore(s.db.Get())
+
 	mux := http.NewServeMux()
 
-	clientHandler := client.NewHandler()
+	clientHandler := client.NewHandler(userStore)
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)

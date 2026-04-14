@@ -1,18 +1,16 @@
 package util
 
 import (
-	"dragonite/internal/types"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
-	"time"
+
+	"github.com/caio-bernardo/dragonite/internal/types"
 )
 
 var (
-	RequestTimeout = 2 * time.Second
-	ErrInvalidID   = errors.New("invalid id parameter")
+	ErrInvalidID = errors.New("invalid id parameter")
 )
 
 // / Escreve uma reposta com o corpo em JSON com o status passado
@@ -62,18 +60,9 @@ func GetComposedID(r *http.Request) (int64, int64, error) {
 	return id1, id2, nil
 }
 
-// / Escreve uma mensagem de error com o status passado, o corpo da mensagem será em JSON
-func ErrorJSON(w http.ResponseWriter, msg string, status int) {
-	w.Header().Add("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	res, err := json.Marshal(types.NewErrorResponse(msg))
-	// Impossivel
-	if err != nil {
-		log.Printf("Error ao criar mensagem em json: %s", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	w.Write(res)
+// WriteError escreve uma resposta de erro em uma reponse, acompanhada de um status Code
+func WriteError(w http.ResponseWriter, status int, message types.ErrorResponse) {
+	WriteJSON(w, status, message)
 }
+
+
