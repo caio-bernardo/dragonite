@@ -1,5 +1,12 @@
 package types
 
+import "errors"
+
+var (
+	ErrNotFound = errors.New("Not found")
+	ErrInternalServer = errors.New("Internal error")
+)
+
 // MatrixErrorCode contém os códigos de erros do Matrix
 type MatrixErrorCode string
 

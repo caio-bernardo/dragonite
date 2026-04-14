@@ -91,8 +91,8 @@ make run
 ## Maintainers
 
 - Caio Bernardo
-- Lucas Farias
-- Willian Jefferson
+- Lucas Neves
+- Willian Farias
 
 <!-- ## Acknowledgements -->
 
