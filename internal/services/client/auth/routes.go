@@ -3,12 +3,10 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/utils"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct{}
@@ -57,17 +55,17 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: needs database
-	var user *User
-	if payload.Identifier.Type == types.IdentifierTypeUser {
-		user, err = h.store.fetchUser(payload.Identifier.User)
-		if err != nil {
-			log.Println("[ERROR] POST /login. Failed to query user.", err)
-			utils.WriteError(w, http.StatusForbidden, types.NewErrorResponse(types.M_FORBIDDEN, "Failed to authenticate to said user"))
-		}
-	}
-	if err := bcrypt.CompareHashAndPassword(user.hashedPassword, []byte(payload.Password)); err != nil {
-		utils.WriteError(w, http.StatusForbidden, types.NewErrorResponse(types.M_FORBIDDEN, "Failed to authenticate to said user."))
-	}
+	// var user *User
+	// if payload.Identifier.Type == types.IdentifierTypeUser {
+	// 	user, err = h.store.fetchUser(payload.Identifier.User)
+	// 	if err != nil {
+	// 		log.Println("[ERROR] POST /login. Failed to query user.", err)
+	// 		utils.WriteError(w, http.StatusForbidden, types.NewErrorResponse(types.M_FORBIDDEN, "Failed to authenticate to said user"))
+	// 	}
+	// }
+	// if err := bcrypt.CompareHashAndPassword(user.hashedPassword, []byte(payload.Password)); err != nil {
+	// 	utils.WriteError(w, http.StatusForbidden, types.NewErrorResponse(types.M_FORBIDDEN, "Failed to authenticate to said user."))
+	// }
 
 	// TODO: criar access_token
 	// TODO: criar new device id if not exists
@@ -75,7 +73,7 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	response := LoginReponse{
 		AccessToken: "abc123",
 		DeviceID:    "123",
-		UserID:      user.ID,
+		UserID:      "abc",
 	}
 	utils.WriteJSON(w, 200, response)
 }
