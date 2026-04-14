@@ -8,12 +8,10 @@
 	let useremail = $state('');
 	let userpassword = $state('');
 
-	let isLoading = $state(false);
-
 	async function handleLogin(event: Event) {
 		event.preventDefault();
+		console.log(homeserver);
 		try {
-			isLoading = true;
 			const client = createClient({ baseUrl: homeserver });
 
 			const response = await client.loginRequest({
@@ -79,12 +77,7 @@
 		</label>
 	</fieldset>
 	<fieldset class="flex justify-end">
-		<button
-			disabled={isLoading}
-			type="submit"
-			class="btn preset-filled-primary-500 disabled:opacity-50"
-			>{isLoading ? 'Loading...' : 'Log in'}</button
-		>
+		<button type="submit" class="btn preset-filled-primary-500">Log in</button>
 	</fieldset>
 </form>
 

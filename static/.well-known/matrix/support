@@ -1,0 +1,10 @@
+{
+  "contacts": [
+    {
+      "email_address": "me@caiobernardo.top",
+      "matrix_id": "@admin:dragonite.caiobernardo.top",
+      "role": "m.role.admin"
+    },
+  ],
+  "support_page": "https://github.com/caio-bernardo/dragonite/issues"
+}
