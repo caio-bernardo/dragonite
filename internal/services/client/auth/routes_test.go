@@ -29,3 +29,7 @@ func TestGetLoginFlows(t *testing.T) {
 	}
 
 }
+
+func TestPostLogin(t *testing.T) {
+
+}

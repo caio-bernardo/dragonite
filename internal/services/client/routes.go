@@ -9,16 +9,17 @@ import (
 )
 
 type Handler struct {
-	userStore repository.UserStore
+	userStore   repository.UserStore
+	deviceStore repository.DeviceStore
 }
 
-func NewHandler(userStore repository.UserStore) *Handler {
-	return &Handler{userStore: userStore}
+func NewHandler(userStore repository.UserStore, deviceStore repository.DeviceStore) *Handler {
+	return &Handler{userStore: userStore, deviceStore: deviceStore}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
-	auth := auth.NewHandler(h.userStore)
+	auth := auth.NewHandler(h.userStore, h.deviceStore)
 
 	mux.HandleFunc("GET /_matrix/client/versions", h.getVersions)
 

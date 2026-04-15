@@ -28,7 +28,7 @@ type LoginReponse struct {
 	AccessToken  string `json:"access_token"`
 	DeviceID     string `json:"device_id"`
 	UserID       string `json:"user_id"`
-	ExpireMS     *int   `json:"expire_ms,omitempty"`
+	ExpireMS     *int64 `json:"expire_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	// TODO: add Identity server information
 }

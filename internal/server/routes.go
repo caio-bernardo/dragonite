@@ -13,10 +13,11 @@ import (
 func (s *AppServer) RegisterRoutes() http.Handler {
 	// repositorios
 	userStore := repository.NewUsuarioStore(s.db.Get())
+	deviceStore := repository.NewDispositivoStore(s.db.Get())
 
 	mux := http.NewServeMux()
 
-	clientHandler := client.NewHandler(userStore)
+	clientHandler := client.NewHandler(userStore, deviceStore)
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
