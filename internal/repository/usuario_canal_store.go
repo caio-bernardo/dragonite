@@ -11,13 +11,12 @@ import (
 
 type UsuarioCanalStore interface {
 	GetAll(ctx context.Context, filter util.Filter) ([]model.UsuarioCanal, error)
-	GetByID(ctx context.Context, id int64) (*model.UsuarioCanal, error)
-	GetByComposedID(ctx context.Context, id_usuario int64, id_canal int64) (*model.UsuarioCanal, error)
-	GetAllByUsuarioID(ctx context.Context, id_usuario int64) ([]model.UsuarioCanal, error)
-	GetAllByCanalID(ctx context.Context, id_canal int64) ([]model.UsuarioCanal, error)
+	GetByComposedID(ctx context.Context, id_usuario string, id_canal string) (*model.UsuarioCanal, error)
+	GetAllByUsuarioID(ctx context.Context, id_usuario string) ([]model.UsuarioCanal, error)
+	GetAllByCanalID(ctx context.Context, id_canal string) ([]model.UsuarioCanal, error)
 	Create(ctx context.Context, props *model.UsuarioCanal) error
 	Update(ctx context.Context, props *model.UsuarioCanal) error
-	Delete(ctx context.Context, id_usuario int64, id_canal int64) (*model.UsuarioCanal, error)
+	Delete(ctx context.Context, id_usuario string, id_canal string) (*model.UsuarioCanal, error)
 }
 
 type usuarioCanalStore struct {
@@ -29,9 +28,9 @@ func NewUsuarioCanalStore(db *sql.DB) UsuarioCanalStore {
 }
 
 func (s *usuarioCanalStore) GetAll(ctx context.Context, filter util.Filter) ([]model.UsuarioCanal, error) {
-	query := "SELECT id_usuario, id_canal, data_hora FROM usuario_canal"
+	query := "SELECT uc.fk_id_canal, uc.fk_id_usuario, uc.fk_id_evento, uc.membresia FROM usuario_canal uc"
 
-	rows, err := util.QueryRowsWithFilter(s.db, ctx, query, &filter, "io")
+	rows, err := util.QueryRowsWithFilter(s.db, ctx, query, &filter, "uc")
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +39,7 @@ func (s *usuarioCanalStore) GetAll(ctx context.Context, filter util.Filter) ([]m
 	usuarios := make([]model.UsuarioCanal, 0)
 	for rows.Next() {
 		var d model.UsuarioCanal
-		err = rows.Scan(&d.ID, &d.UsuarioID, &d.CanalID, &d.DataHora)
+		err = rows.Scan(&d.CanalID, &d.UsuarioID, &d.EventoID, &d.Membresia)
 		if err != nil {
 			return nil, err
 		}
@@ -49,28 +48,13 @@ func (s *usuarioCanalStore) GetAll(ctx context.Context, filter util.Filter) ([]m
 	return usuarios, nil
 }
 
-func (s *usuarioCanalStore) GetByID(ctx context.Context, id int64) (*model.UsuarioCanal, error) {
-	query := "SELECT id_usuario, id_canal, data_hora FROM usuario_canal WHERE id_usuario = $1 ;"
-	row := s.db.QueryRowContext(ctx, query, id)
-
-	var d model.UsuarioCanal
-	err := row.Scan(&d.ID, &d.UsuarioID, &d.CanalID, &d.DataHora)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, types.ErrNotFound
-		}
-		return nil, err
-	}
-	return &d, nil
-}
-
 // GetByComposedID busca uma entrada específica de ItemOferta pela sua chave primária composta.
-func (s *usuarioCanalStore) GetByComposedID(ctx context.Context, id_usuario int64, id_canal int64) (*model.UsuarioCanal, error) {
-	query := "SELECT id_usuario, id_canal, data_hora FROM usuario_canal WHERE id_usuario = $1 AND id_canal = $2"
+func (s *usuarioCanalStore) GetByComposedID(ctx context.Context, id_usuario string, id_canal string) (*model.UsuarioCanal, error) {
+	query := "SELECT fk_id_canal, fk_id_usuario, fk_id_evento, membresia FROM usuario_canal WHERE fk_id_usuario = $1 AND fk_id_canal = $2"
 	row := s.db.QueryRowContext(ctx, query, id_usuario, id_canal)
 
 	var io model.UsuarioCanal
-	err := row.Scan(&io.ID, &io.UsuarioID, &io.CanalID, &io.DataHora)
+	err := row.Scan(&io.CanalID, &io.UsuarioID, &io.EventoID, &io.Membresia)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, types.ErrNotFound
@@ -81,8 +65,8 @@ func (s *usuarioCanalStore) GetByComposedID(ctx context.Context, id_usuario int6
 }
 
 // GetAllByUsuarioID busca todas as entradas de UsuarioCanal para um determinado usuário.
-func (s *usuarioCanalStore) GetAllByUsuarioID(ctx context.Context, id_usuario int64) ([]model.UsuarioCanal, error) {
-	query := "SELECT id_usuario, id_canal, data_hora FROM usuario_canal WHERE id_usuario = $1"
+func (s *usuarioCanalStore) GetAllByUsuarioID(ctx context.Context, id_usuario string) ([]model.UsuarioCanal, error) {
+	query := "SELECT fk_id_canal, fk_id_usuario, fk_id_evento, membresia FROM usuario_canal WHERE fk_id_usuario = $1"
 	rows, err := s.db.QueryContext(ctx, query, id_usuario)
 	if err != nil {
 		return nil, err
@@ -92,7 +76,7 @@ func (s *usuarioCanalStore) GetAllByUsuarioID(ctx context.Context, id_usuario in
 	var usuariosCanal []model.UsuarioCanal
 	for rows.Next() {
 		var uc model.UsuarioCanal
-		err = rows.Scan(&uc.UsuarioID, &uc.CanalID, &uc.DataHora)
+		err = rows.Scan(&uc.CanalID, &uc.UsuarioID, &uc.EventoID, &uc.Membresia)
 		if err != nil {
 			return nil, err
 		}
@@ -102,8 +86,8 @@ func (s *usuarioCanalStore) GetAllByUsuarioID(ctx context.Context, id_usuario in
 }
 
 // GetAllByCanalID busca todas as entradas de UsuarioCanal para um determinado canal.
-func (s *usuarioCanalStore) GetAllByCanalID(ctx context.Context, id_canal int64) ([]model.UsuarioCanal, error) {
-	query := "SELECT id_usuario, id_canal, data_hora FROM usuario_canal WHERE id_canal = $1"
+func (s *usuarioCanalStore) GetAllByCanalID(ctx context.Context, id_canal string) ([]model.UsuarioCanal, error) {
+	query := "SELECT fk_id_canal, fk_id_usuario, fk_id_evento, membresia FROM usuario_canal WHERE fk_id_canal = $1"
 	rows, err := s.db.QueryContext(ctx, query, id_canal)
 	if err != nil {
 		return nil, err
@@ -113,7 +97,7 @@ func (s *usuarioCanalStore) GetAllByCanalID(ctx context.Context, id_canal int64)
 	var usuariosCanal []model.UsuarioCanal
 	for rows.Next() {
 		var uc model.UsuarioCanal
-		err = rows.Scan(&uc.UsuarioID, &uc.CanalID, &uc.DataHora)
+		err = rows.Scan(&uc.CanalID, &uc.UsuarioID, &uc.EventoID, &uc.Membresia)
 		if err != nil {
 			return nil, err
 		}
@@ -123,14 +107,14 @@ func (s *usuarioCanalStore) GetAllByCanalID(ctx context.Context, id_canal int64)
 }
 
 func (s *usuarioCanalStore) Create(ctx context.Context, props *model.UsuarioCanal) error {
-	query := "INSERT INTO usuario_canal (id_usuario, id_canal, data_hora) VALUES ($1, $2, $3)"
-	_, err := s.db.ExecContext(ctx, query, props.UsuarioID, props.CanalID, props.DataHora)
+	query := "INSERT INTO usuario_canal (fk_id_canal, fk_id_usuario, fk_id_evento, membresia) VALUES ($1, $2, $3, $4)"
+	_, err := s.db.ExecContext(ctx, query, props.CanalID, props.UsuarioID, props.EventoID, props.Membresia)
 	return err
 }
 
 func (s *usuarioCanalStore) Update(ctx context.Context, props *model.UsuarioCanal) error {
-	query := "UPDATE usuario_canal SET data_hora = $1 WHERE id_usuario = $2 AND id_canal = $3"
-	res, err := s.db.ExecContext(ctx, query, props.DataHora, props.UsuarioID, props.CanalID)
+	query := "UPDATE usuario_canal SET fk_id_evento = $1, membresia = $2 WHERE fk_id_canal = $3 AND fk_id_usuario = $4"
+	res, err := s.db.ExecContext(ctx, query, props.EventoID, props.Membresia, props.CanalID, props.UsuarioID)
 	if err != nil {
 		return err
 	}
@@ -145,13 +129,13 @@ func (s *usuarioCanalStore) Update(ctx context.Context, props *model.UsuarioCana
 	return nil
 }
 
-func (s *usuarioCanalStore) Delete(ctx context.Context, id_usuario int64, id_canal int64) (*model.UsuarioCanal, error) {
+func (s *usuarioCanalStore) Delete(ctx context.Context, id_usuario string, id_canal string) (*model.UsuarioCanal, error) {
 	usuario, err := s.GetByComposedID(ctx, id_usuario, id_canal)
 	if err != nil {
 		return nil, err
 	}
 
-	query := "DELETE FROM usuario_canal WHERE id_usuario = $1 AND id_canal = $2"
+	query := "DELETE FROM usuario_canal WHERE fk_id_usuario = $1 AND fk_id_canal = $2"
 	res, err := s.db.ExecContext(ctx, query, usuario.UsuarioID, usuario.CanalID)
 	if err != nil {
 		return nil, err

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS Aresta_Evento (
     id_evento_antecessor VARCHAR(512) NOT NULL,
     fk_id_canal VARCHAR(512) NOT NULL REFERENCES canal(id_canal),
     is_state BOOLEAN DEFAULT FALSE, -- aresta define estado/fluxo na linha do tempo
-    PRIMARY KEY (fk_id_evento, fk_id_antecessor)
+    PRIMARY KEY (fk_id_evento, id_evento_antecessor)
 );
 
-CREATE INDEX IF NOT EXISTS idx_evento_aresta_antecessor ON Aresta_Evento(id_antecessor);
+CREATE INDEX IF NOT EXISTS idx_evento_aresta_antecessor ON Aresta_Evento(id_evento_antecessor);
