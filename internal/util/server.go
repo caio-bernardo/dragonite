@@ -3,8 +3,15 @@ package util
 import (
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	_ "github.com/joho/godotenv/autoload"
+)
+
+var (
+	ServerName = os.Getenv("SERVER_NAME")
 )
 
 const (

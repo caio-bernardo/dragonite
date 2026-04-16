@@ -12,7 +12,7 @@ import (
 )
 
 var JWTSecretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
-var AccessTokenExpiration = 30 * time.Minute
+var AccessTokenExpiration = 15 * time.Minute
 var RefreshTokenExpiration = 30 * 24 * time.Hour
 
 // GenerateAccessToken gera um token de acesso JWT para o usuário e dispositivo

@@ -28,9 +28,13 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	return nil
 }
 
-// / Lê o corpo (em json) da requisição, decodifica e armazena no destino
-func ReadJSON(r *http.Request, dst any) error {
-	return json.NewDecoder(r.Body).Decode(dst)
+// ParseBody lê o corpo (em json) da requisição, decodifica e armazena no destino
+func ParseBody(r *http.Request, payload any) error {
+	if r.Body == nil {
+		return types.ErrBodyRequired
+	}
+	err := json.NewDecoder(r.Body).Decode(payload)
+	return err
 }
 
 func GetIDParam(r *http.Request) (int64, error) {
@@ -64,5 +68,3 @@ func GetComposedID(r *http.Request) (int64, int64, error) {
 func WriteError(w http.ResponseWriter, status int, message types.ErrorResponse) {
 	WriteJSON(w, status, message)
 }
-
-

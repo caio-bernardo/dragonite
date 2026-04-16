@@ -41,11 +41,16 @@ func (m *MockUserStore) Delete(ctx context.Context, id string) (*model.Usuario, 
 // MockDeviceStore is a mock implementation of repository.DeviceStore for testing
 type MockDeviceStore struct{}
 
+// GetByRefreshToken implements [repository.DeviceStore].
+func (m *MockDeviceStore) GetByRefreshToken(ctx context.Context, refreshToken string) (*model.Dispositivo, error) {
+	panic("unimplemented")
+}
+
 func (m *MockDeviceStore) GetAll(ctx context.Context, filter util.Filter) ([]model.Dispositivo, error) {
 	return []model.Dispositivo{}, nil
 }
 
-func (m *MockDeviceStore) GetByID(ctx context.Context, id int64) (*model.Dispositivo, error) {
+func (m *MockDeviceStore) GetByID(ctx context.Context, id string) (*model.Dispositivo, error) {
 	return nil, nil
 }
 
@@ -61,7 +66,7 @@ func (m *MockDeviceStore) CreateOrUpdate(ctx context.Context, props *model.Dispo
 	return nil
 }
 
-func (m *MockDeviceStore) Delete(ctx context.Context, id int64) (*model.Dispositivo, error) {
+func (m *MockDeviceStore) Delete(ctx context.Context, id string) (*model.Dispositivo, error) {
 	return nil, nil
 }
 

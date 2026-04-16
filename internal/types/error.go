@@ -3,8 +3,11 @@ package types
 import "errors"
 
 var (
-	ErrNotFound = errors.New("Not found")
-	ErrInternalServer = errors.New("Internal error")
+	ErrNotFound        = errors.New("Not found")
+	ErrInternalServer  = errors.New("Internal error")
+	ErrBodyRequired    = errors.New("Body is required")
+	ErrInvalidUsername = errors.New("Invalid username")
+	ErrLocalpartInUse  = errors.New("Localpart already exists")
 )
 
 // MatrixErrorCode contém os códigos de erros do Matrix
