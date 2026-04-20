@@ -3,7 +3,6 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"os"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/types"
@@ -11,7 +10,6 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 )
 
-var JWTSecretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
 var AccessTokenExpiration = 15 * time.Minute
 var RefreshTokenExpiration = 30 * 24 * time.Hour
 
@@ -20,7 +18,7 @@ var RefreshTokenExpiration = 30 * 24 * time.Hour
 func GenerateAccessToken(userID, deviceID string) (string, int64, error) {
 	expirationTime := time.Now().Add(AccessTokenExpiration)
 
-	claims := &types.JWTClaims{
+	claims := &types.MatrixClaims{
 		UserID:   userID,
 		DeviceID: deviceID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -31,7 +29,7 @@ func GenerateAccessToken(userID, deviceID string) (string, int64, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(JWTSecretKey)
+	tokenString, err := token.SignedString(types.JWTSecretKey)
 
 	// Retorna o token e o tempo de expiração em milissegundos para a resposta
 	expiresInMs := time.Until(expirationTime).Milliseconds()

@@ -21,7 +21,7 @@ func (s *AppServer) RegisterRoutes() http.Handler {
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
-	clientHandler.RegisterRoutes(mux)
+	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 
 	// wildcard
 	mux.HandleFunc("GET /", s.HelloWorldHandler)

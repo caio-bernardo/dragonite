@@ -13,6 +13,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/model"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -101,6 +102,26 @@ func (m *MockDeviceStore) Delete(ctx context.Context, id string) (*model.Disposi
 	return nil, nil
 }
 
+// Helper function to create a valid JWT token for testing
+func createTestToken(userID, deviceID string) (string, error) {
+	originalKey := types.JWTSecretKey
+	defer func() { types.JWTSecretKey = originalKey }()
+
+	types.JWTSecretKey = []byte("test-secret-key")
+
+	claims := types.MatrixClaims{
+		UserID:   userID,
+		DeviceID: deviceID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(types.JWTSecretKey)
+}
+
 func TestGetLoginFlows(t *testing.T) {
 	mockUserStore := MockUserStore{}
 	mockDeviceStore := MockDeviceStore{}
@@ -127,10 +148,10 @@ func TestGetLoginFlows(t *testing.T) {
 }
 
 func TestPostLogin_Success(t *testing.T) {
-	originalKey := JWTSecretKey
-	JWTSecretKey = []byte("test-secret")
+	originalKey := types.JWTSecretKey
+	types.JWTSecretKey = []byte("test-secret")
 	defer func() {
-		JWTSecretKey = originalKey
+		types.JWTSecretKey = originalKey
 	}()
 
 	password := "password"
@@ -398,10 +419,10 @@ func TestPostRefresh_ExpiredToken(t *testing.T) {
 }
 
 func TestPostRefresh_Success(t *testing.T) {
-	originalKey := JWTSecretKey
-	JWTSecretKey = []byte("test-secret")
+	originalKey := types.JWTSecretKey
+	types.JWTSecretKey = []byte("test-secret")
 	defer func() {
-		JWTSecretKey = originalKey
+		types.JWTSecretKey = originalKey
 	}()
 
 	mockUserStore := MockUserStore{}
@@ -455,7 +476,7 @@ func TestPostLogout_Success(t *testing.T) {
 	h := NewHandler(&mockUserStore, &mockDeviceStore)
 
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/logout", bytes.NewBufferString("{}"))
-	req = req.WithContext(context.WithValue(req.Context(), "device_id", "DEVICE"))
+	req = req.WithContext(context.WithValue(req.Context(), types.DeviceIDKey, "DEVICE"))
 	rr := httptest.NewRecorder()
 
 	h.postLogout(rr, req)
@@ -490,7 +511,7 @@ func TestPostLogout_DeviceLookupError(t *testing.T) {
 	h := NewHandler(&mockUserStore, &mockDeviceStore)
 
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/logout", bytes.NewBufferString("{}"))
-	req = req.WithContext(context.WithValue(req.Context(), "device_id", "DEVICE"))
+	req = req.WithContext(context.WithValue(req.Context(), types.DeviceIDKey, "DEVICE"))
 	rr := httptest.NewRecorder()
 
 	h.postLogout(rr, req)
@@ -625,10 +646,10 @@ func TestPostRegister_Success_InhibitLogin(t *testing.T) {
 }
 
 func TestPostRegister_Success_WithLogin(t *testing.T) {
-	originalKey := JWTSecretKey
-	JWTSecretKey = []byte("test-secret")
+	originalKey := types.JWTSecretKey
+	types.JWTSecretKey = []byte("test-secret")
 	defer func() {
-		JWTSecretKey = originalKey
+		types.JWTSecretKey = originalKey
 	}()
 
 	originalServerName := util.ServerName

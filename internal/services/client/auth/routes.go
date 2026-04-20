@@ -24,11 +24,11 @@ func NewHandler(userStore repository.UserStore, deviceStore repository.DeviceSto
 	return &Handler{userStore, deviceStore}
 }
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middleware) {
 	mux.HandleFunc("GET /_matrix/client/v3/login", h.getLogin)
 	mux.HandleFunc("POST /_matrix/client/v3/login", h.postLogin)
 	mux.HandleFunc("POST /_matrix/client/v3/refresh", h.postRefresh)
-	mux.HandleFunc("POST /_matrix/client/v3/logout", h.postLogout) // TODO: aplicar middleware de auth
+	mux.Handle("POST /_matrix/client/v3/logout", authMiddleware(http.HandlerFunc(h.postLogout)))
 	mux.HandleFunc("POST /_matrix/client/v3/register", h.postRegister)
 }
 
@@ -185,9 +185,8 @@ func (h *Handler) postLogout(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	deviceIDValue := ctx.Value("device_id") // NOTE: considera que o middleware de autenticação injetou esses valores a partir do access token
-	deviceID, ok := deviceIDValue.(string)
-	if !ok || deviceID == "" {
+	deviceID := ctx.Value(types.DeviceIDKey).(string) // NOTE: considera que o middleware de autenticação injetou esses valores a partir do access token
+	if deviceID == "" {
 		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Missing device_id in context."))
 		return
 	}

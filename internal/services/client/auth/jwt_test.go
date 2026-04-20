@@ -9,10 +9,10 @@ import (
 )
 
 func TestGenerateAccessToken(t *testing.T) {
-	originalKey := JWTSecretKey
-	JWTSecretKey = []byte("test-secret")
+	originalKey := types.JWTSecretKey
+	types.JWTSecretKey = []byte("test-secret")
 	defer func() {
-		JWTSecretKey = originalKey
+		types.JWTSecretKey = originalKey
 	}()
 
 	userID := "@alice:example.com"
@@ -29,8 +29,8 @@ func TestGenerateAccessToken(t *testing.T) {
 		t.Fatalf("expected expiresMS to be positive, got %d", expiresMS)
 	}
 
-	parsedToken, err := jwt.ParseWithClaims(tokenString, &types.JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return JWTSecretKey, nil
+	parsedToken, err := jwt.ParseWithClaims(tokenString, &types.MatrixClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return types.JWTSecretKey, nil
 	})
 	if err != nil {
 		t.Fatalf("failed to parse token: %v", err)
@@ -39,7 +39,7 @@ func TestGenerateAccessToken(t *testing.T) {
 		t.Fatalf("expected token to be valid")
 	}
 
-	claims, ok := parsedToken.Claims.(*types.JWTClaims)
+	claims, ok := parsedToken.Claims.(*types.MatrixClaims)
 	if !ok {
 		t.Fatalf("expected JWTClaims type")
 	}

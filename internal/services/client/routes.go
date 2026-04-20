@@ -5,6 +5,7 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/repository"
 	"github.com/caio-bernardo/dragonite/internal/services/client/auth"
+	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
@@ -17,14 +18,14 @@ func NewHandler(userStore repository.UserStore, deviceStore repository.DeviceSto
 	return &Handler{userStore: userStore, deviceStore: deviceStore}
 }
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middleware) {
 
 	auth := auth.NewHandler(h.userStore, h.deviceStore)
 
 	mux.HandleFunc("GET /_matrix/client/versions", h.getVersions)
 
 	// autenticação
-	auth.RegisterRoutes(mux)
+	auth.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
 	mux.HandleFunc("GET /_matrix/client/sync", util.UnimplementedHandler) // WARN: esse é o dificil
