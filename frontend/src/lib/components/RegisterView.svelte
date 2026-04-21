@@ -4,20 +4,51 @@
 	import { toaster } from '$lib/stores/toaster';
 	import { createClient } from 'matrix-js-sdk';
 
-	let homeserver = $state('http://localhost:8080');
+	const homeserver = 'http://localhost:8080';
 	let username = $state('');
 	let userpassword = $state('');
+	let confirmpassword = $state('');
 
-	async function handleLogin(event: Event) {
+	async function handleRegister(event: Event) {
 		event.preventDefault();
-		console.log(homeserver);
+
+		// Form validation
+		if (username.trim().length === 0) {
+			toaster.error({
+				title: 'Username Required',
+				description: 'Please enter a username.'
+			});
+			return;
+		}
+		if (!username.match(/^[\w\d._=+-]+$/)) {
+			toaster.error({
+				title: 'Invalid Username',
+				description: 'Username should just contain letters, digits or .,_,=,+,-'
+			});
+			return;
+		}
+
+		if (userpassword.trim().length < 6) {
+			toaster.error({
+				title: 'Password Too Short',
+				description: 'Your password must be at least 6 characters long.'
+			});
+			return;
+		}
+
+		if (userpassword !== confirmpassword) {
+			toaster.error({
+				title: 'Password Mismatch',
+				description: 'The passwords you entered do not match.'
+			});
+			return;
+		}
+
 		try {
 			const client = createClient({ baseUrl: homeserver });
 
-			const response = await client.loginRequest({
-				type: 'm.login.password',
-				identifier: { type: 'm.id.user', user: username },
-				password: userpassword
+			const response = await client.register(username, userpassword, null, {
+				type: 'm.login.password'
 			});
 
 			if (response.access_token && response.user_id && response.device_id) {
@@ -39,20 +70,9 @@
 	}
 </script>
 
-<form onsubmit={handleLogin} class="mx-auto w-full max-w-sm space-y-4 rounded-xl border-2 p-6">
+<form onsubmit={handleRegister} class="mx-auto w-full max-w-sm space-y-4 rounded-xl border-2 p-6">
 	<fieldset class="space-y-4">
-		<legend class="text-2xl font-bold">Sign In</legend>
-
-		<label class="label">
-			<span class="label-text">Host Server</span>
-			<input
-				name="host"
-				type="text"
-				class="input"
-				placeholder="matrix.org"
-				bind:value={homeserver}
-			/>
-		</label>
+		<legend class="text-2xl font-bold">Sign Up</legend>
 
 		<label class="label">
 			<span class="label-text">Username</span>
@@ -75,9 +95,20 @@
 				placeholder="Password"
 			/>
 		</label>
+
+		<label class="label">
+			<span class="label-text">Confirm password</span>
+			<input
+				name="password"
+				class="input"
+				type="password"
+				bind:value={confirmpassword}
+				placeholder="Password"
+			/>
+		</label>
 	</fieldset>
 	<fieldset class="flex justify-end">
-		<button type="submit" class="btn preset-filled-primary-500">Log in</button>
+		<button type="submit" class="btn preset-filled-primary-500">Create</button>
 	</fieldset>
 </form>
 

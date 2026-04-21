@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import LoginView from '$lib/components/LoginView.svelte';
+	import RegisterView from '$lib/components/RegisterView.svelte';
 
 	const currentYear = new Date().getFullYear();
 </script>
@@ -14,11 +14,9 @@
 	</hgroup>
 
 	<div>
-		<LoginView />
+		<RegisterView />
 		<p class="text-center">
-			Don't have an Account? <a class="anchor" href={resolve('/register')}
-				>Click here to create one</a
-			>.
+			Already have an account? <a class="anchor" href={resolve('/login')}>Click here to sign in</a>.
 		</p>
 	</div>
 
