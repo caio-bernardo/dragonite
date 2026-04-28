@@ -102,6 +102,10 @@ func (m *MockDeviceStore) Delete(ctx context.Context, id string) (*model.Disposi
 	return nil, nil
 }
 
+func (m *MockUserStore) Search(ctx context.Context, term string, limit int) ([]model.Usuario, error) {
+	return []model.Usuario{}, nil
+}
+
 // Helper function to create a valid JWT token for testing
 func createTestToken(userID, deviceID string) (string, error) {
 	originalKey := types.JWTSecretKey

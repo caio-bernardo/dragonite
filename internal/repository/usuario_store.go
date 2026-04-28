@@ -19,6 +19,7 @@ type UserStore interface {
 	Create(ctx context.Context, usuario *model.Usuario) error
 	Update(ctx context.Context, usuario *model.Usuario) error
 	Delete(ctx context.Context, id string) (*model.Usuario, error)
+	Search(ctx context.Context, term string, limit int) ([]model.Usuario, error)
 }
 
 type usuarioStore struct {
@@ -133,4 +134,40 @@ func (s *usuarioStore) Delete(ctx context.Context, id_usuario string) (*model.Us
 	}
 
 	return usuario, nil
+}
+
+// Search busca usuários por user_id ou nome de exibição de forma case-insensitive.
+
+// NOTA: A spec Matrix exige que a busca considere apenas usuários "visíveis"
+// para o solicitante, ou seja: usuários que compartilham uma sala com ele,
+// usuários em salas públicas, ou em salas com histórico world_readable.
+// Esta implementação ainda não aplica esse filtro de visibilidade — ela
+// retorna todos os usuários locais que correspondem ao termo de busca.
+// TODO: adicionar joins com as tabelas de salas (canal) e membros para respeitar
+// a visibilidade conforme a spec.
+func (s *usuarioStore) Search(ctx context.Context, term string, limit int) ([]model.Usuario, error) {
+    query := `
+        SELECT id_usuario, nome_usuario, localpart_usuario, foto_usuario
+        FROM usuario
+        WHERE LOWER(id_usuario) LIKE LOWER($1)
+           OR LOWER(nome_usuario) LIKE LOWER($1)
+        LIMIT $2`
+
+    pattern := "%" + term + "%"
+    rows, err := s.db.QueryContext(ctx, query, pattern, limit)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    usuarios := make([]model.Usuario, 0)
+    for rows.Next() {
+        var u model.Usuario
+        err = rows.Scan(&u.ID, &u.Nome, &u.LocalPart, &u.Foto)
+        if err != nil {
+            return nil, err
+        }
+        usuarios = append(usuarios, u)
+    }
+    return usuarios, nil
 }
