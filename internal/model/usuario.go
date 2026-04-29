@@ -27,6 +27,17 @@ type UsuarioCreate struct {
 	DataCriacao time.Time `json:"data_criacao_usuario"`
 }
 
+// Essa struct representa o perfil completo
+type ProfileResponse struct {
+	DisplayName string `json:"displayname,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+}
+
+// DisplayNameRequest representa a requisição/resposta para displayname
+type DisplayNameRequest struct {
+	DisplayName string `json:"displayname"`
+}
+
 // ToUsuario converte um UsuarioCreate em um Usuario fazendo validação e hash da senha
 func (uc UsuarioCreate) ToUsuario() (Usuario, error) {
 	if !ValidateLocalPart(uc.LocalPart) {
