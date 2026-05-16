@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS usuario_canal (
 	membresia VARCHAR(50) NOT NULL,
 	joined_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (fk_id_canal, fk_id_usuario)
-	
+
 );
 
 CREATE TABLE IF NOT EXISTS dispositivo (
@@ -207,9 +207,9 @@ func insertCanal(t *testing.T, canal model.Canal) {
 func insertEvento(t *testing.T, evento model.Evento) {
 	t.Helper()
 	_, err := testDB.Exec(
-		`INSERT INTO evento (id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento, origem_servidor_evento_ts)
-		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
-		evento.ID, evento.Tipo, evento.CanalID, evento.SenderID, evento.StateKey, evento.Conteudo, evento.OrigemServidorTS,
+		`INSERT INTO evento (id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento, origem_servidor_evento_ts, stream_ordering_evento)
+		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+		evento.ID, evento.Tipo, evento.CanalID, evento.SenderID, evento.StateKey, evento.Conteudo, evento.OrigemServidorTS, evento.StreamOrdering,
 	)
 	if err != nil {
 		t.Fatalf("failed to insert evento: %v", err)

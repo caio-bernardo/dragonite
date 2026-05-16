@@ -48,6 +48,18 @@ func (m *MockUserStore) Search(ctx context.Context, term string, limit int) ([]m
 	return m.SearchResults, nil
 }
 
+func (m *MockUserStore) GetNameAndPhotoByID(ctx context.Context, id string) (*model.Usuario, error) {
+	return nil, nil
+}
+
+func (m *MockUserStore) ClearProfileKey(ctx context.Context, userID string, colunaDB string) error {
+	return nil
+}
+
+func (m *MockUserStore) UpdateProfileKey(ctx context.Context, userID string, colunaDB string, novoValor string) error {
+	return nil
+}
+
 // MockDeviceStore is a mock implementation of repository.DeviceStore for testing
 type MockDeviceStore struct{}
 
@@ -112,6 +124,10 @@ func (m *MockChannelStore) UpdateMemberCount(ctx context.Context, canalID string
 	return nil
 }
 
+func (m *MockChannelStore) UpsertEstadoAtual(ctx context.Context, estado *model.EstadoAtualCanal) error {
+	return nil
+}
+
 // Implementa repository.UsuarioCanalStore com 8 métodos conforme usuario_canal_store.go
 // Implementa repository.UsuarioCanalStore com 8 métodos conforme usuario_canal_store.go
 
@@ -165,6 +181,10 @@ func (m *MockEventoStore) GetAll(ctx context.Context, filter util.Filter) ([]mod
 }
 
 func (m *MockEventoStore) GetByID(ctx context.Context, id string) (*model.Evento, error) {
+	return nil, nil
+}
+
+func (m *MockEventoStore) GetByTxnID(ctx context.Context, senderID, txnID string) (*model.Evento, error) {
 	return nil, nil
 }
 

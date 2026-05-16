@@ -106,6 +106,18 @@ func (m *MockUserStore) Search(ctx context.Context, term string, limit int) ([]m
 	return []model.Usuario{}, nil
 }
 
+func (m *MockUserStore) GetNameAndPhotoByID(ctx context.Context, id string) (*model.Usuario, error) {
+	return nil, nil
+}
+
+func (m *MockUserStore) ClearProfileKey(ctx context.Context, userID string, colunaDB string) error {
+	return nil
+}
+
+func (m *MockUserStore) UpdateProfileKey(ctx context.Context, userID string, colunaDB string, novoValor string) error {
+	return nil
+}
+
 // Helper function to create a valid JWT token for testing
 func createTestToken(userID, deviceID string) (string, error) {
 	originalKey := types.JWTSecretKey

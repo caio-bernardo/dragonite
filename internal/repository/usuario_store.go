@@ -22,7 +22,6 @@ type UserStore interface {
 	Delete(ctx context.Context, id string) (*model.Usuario, error)
 	Search(ctx context.Context, term string, limit int) ([]model.Usuario, error)
 	GetNameAndPhotoByID(ctx context.Context, id string) (*model.Usuario, error)
-	GetProfileKeyByID(ctx context.Context, id string) (*model.Usuario, error)
 	ClearProfileKey(ctx context.Context, userID string, colunaDB string) error
 	UpdateProfileKey(ctx context.Context, userID string, colunaDB string, novoValor string) error
 }
