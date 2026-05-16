@@ -24,7 +24,7 @@ type Handler struct {
 	usuarioCanalStore repository.UsuarioCanalStore
 	eventoStore       repository.EventoStore
 	serverName        string
-  notifier          notifier.Notifier
+	notifier          notifier.Notifier
 }
 
 func NewHandler(canalStore repository.ChannelStore, usuarioCanalStore repository.UsuarioCanalStore, eventoStore repository.EventoStore, serverName string, notifier notifier.Notifier) *Handler {
@@ -344,6 +344,8 @@ func (h *Handler) wakeUpRoomUsers(ctx context.Context, roomID string, additional
 	for _, uid := range usersToNotify {
 		h.notifier.Notify(uid)
 	}
+}
+
 // generateEventID gera o ID único de um evento no formato Matrix: $<base64url_random>
 // Mesmo padrão de generateRoomLocalPart(), só muda o prefixo ($ no lugar de !)
 func generateEventID() (string, error) {
