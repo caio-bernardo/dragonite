@@ -38,6 +38,7 @@ func TestEventoStoreCRUDAndCleanup(t *testing.T) {
 
 	store := NewEventoStore(testDB)
 	ctx := context.Background()
+	txnID := "txn-abc-123"
 
 	evento := model.Evento{
 		ID:               "$event-1:example.com",
@@ -48,10 +49,29 @@ func TestEventoStoreCRUDAndCleanup(t *testing.T) {
 		Conteudo:         `{"body":"hello"}`,
 		OrigemServidorTS: 1234567890,
 		StreamOrdering:   1,
+		TxnID:            &txnID,
 	}
 
 	if err := store.Create(ctx, &evento); err != nil {
 		t.Fatalf("Create() failed: %v", err)
+	}
+
+	// evento encontrado pelo sender + txnId
+	got2, err := store.GetByTxnID(ctx, user.ID, txnID)
+	if err != nil {
+    	t.Fatalf("GetByTxnID() failed: %v", err)
+	}
+	if got2.ID != evento.ID {
+    	t.Fatalf("GetByTxnID() returned unexpected evento: %#v", got2)
+	}
+
+	if _, err := store.GetByTxnID(ctx, user.ID, "txn-inexistente"); !errors.Is(err, types.ErrNotFound) {
+    	t.Fatalf("expected ErrNotFound for unknown txnId, got: %v", err)
+	}
+
+	// mesmo txnId com sender diferente retorna ErrNotFound (constraint é por sender)
+	if _, err := store.GetByTxnID(ctx, "@outro:example.com", txnID); !errors.Is(err, types.ErrNotFound) {
+    	t.Fatalf("expected ErrNotFound for different sender, got: %v", err)
 	}
 
 	got, err := store.GetByID(ctx, evento.ID)

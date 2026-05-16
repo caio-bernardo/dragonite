@@ -1,12 +1,9 @@
 <script>
-	import {
-		ArrowLeftRightIcon,
-		HouseIcon,
-		LogOut,
-		MessageSquare,
-		SettingsIcon
-	} from '@lucide/svelte';
-	import { Navigation } from '@skeletonlabs/skeleton-svelte';
+	import { resolve } from '$app/paths';
+	import { matrixService } from '$lib/stores/matrix.svelte';
+	import { ArrowLeftRightIcon, HouseIcon, MessageSquare, SettingsIcon } from '@lucide/svelte';
+	import { Avatar, Navigation } from '@skeletonlabs/skeleton-svelte';
+  import UserSearchBar from '$lib/components/UserSearchBar.svelte';
 
 	let isLayoutRail = $state(true);
 
@@ -15,10 +12,13 @@
 	}
 
 	const links = [
-		{ label: 'Home', href: '/#', icon: HouseIcon },
-		{ label: 'Rooms', href: '/#', icon: MessageSquare },
+		{ label: 'Home', href: '/dashboard', icon: HouseIcon },
+		{ label: 'Rooms', href: '/dashboard/rooms', icon: MessageSquare },
 		{ label: 'Settings', href: '/#', icon: SettingsIcon }
 	];
+
+	let avatarSrc = matrixService.userProfile.avatarUrl;
+	let avatarFallback = matrixService.userProfile.displayname.charAt(0).toUpperCase() || 'J';
 </script>
 
 <Navigation layout={isLayoutRail ? 'rail' : 'sidebar'} class="grid grid-rows-[auto_1fr_auto] gap-4">
@@ -28,11 +28,12 @@
 			{#if !isLayoutRail}<span>Resize</span>{/if}
 		</Navigation.Trigger>
 	</Navigation.Header>
-	<Navigation.Content>
+	<Navigation.Content class="overflow-visible">
 		<Navigation.Menu>
+			<UserSearchBar isRail={isLayoutRail} onExpand={() => (isLayoutRail = false)} />
 			{#each links as link (link)}
 				{@const Icon = link.icon}
-				<Navigation.TriggerAnchor>
+				<Navigation.TriggerAnchor href={link.href}>
 					<Icon class={isLayoutRail ? 'size-5' : 'size-4'} />
 					<Navigation.TriggerText>{link.label}</Navigation.TriggerText>
 				</Navigation.TriggerAnchor>
@@ -40,9 +41,16 @@
 		</Navigation.Menu>
 	</Navigation.Content>
 	<Navigation.Footer>
-		<Navigation.TriggerAnchor href="/" title="Settings" aria-label="Settings">
-			<LogOut class="size-4" />
-			<Navigation.TriggerText>Leave</Navigation.TriggerText>
+		<Navigation.TriggerAnchor
+			href={resolve('/dashboard/profile')}
+			title="Your Profile"
+			aria-label="Your Profile"
+		>
+			<Avatar class="size-10">
+				<Avatar.Image src={avatarSrc} alt="user's profile picture" />
+				<Avatar.Fallback>{avatarFallback}</Avatar.Fallback>
+			</Avatar>
+			<Navigation.TriggerText>You</Navigation.TriggerText>
 		</Navigation.TriggerAnchor>
 	</Navigation.Footer>
 </Navigation>

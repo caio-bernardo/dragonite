@@ -19,6 +19,7 @@ type ChannelStore interface {
 	// Adicionados para suporte às rotas Matrix de rooms
 	ListPublic(ctx context.Context, limit int, sinceToken string) ([]model.Canal, string, error)
 	UpdateMemberCount(ctx context.Context, canalID string, delta int) error
+	UpsertEstadoAtual(ctx context.Context, estado *model.EstadoAtualCanal) error
 }
 
 type canalStore struct {
@@ -181,5 +182,16 @@ func (s *canalStore) UpdateMemberCount(ctx context.Context, canalID string, delt
 		`UPDATE canal SET member_count = member_count + $1 WHERE id_canal = $2`,
 		delta, canalID,
 	)
+	return err
+}
+
+func (s *canalStore) UpsertEstadoAtual(ctx context.Context, estado *model.EstadoAtualCanal) error {
+	query := `
+		INSERT INTO estado_atual_canal (fk_id_canal, tipo, state_key, fk_id_evento)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (fk_id_canal, tipo, state_key)
+		DO UPDATE SET fk_id_evento = EXCLUDED.fk_id_evento`
+
+	_, err := s.db.ExecContext(ctx, query, estado.CanalID, estado.Tipo, estado.StateKey, estado.EventoID)
 	return err
 }

@@ -106,6 +106,7 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 		UltimoTimestampVisto:  time.Now(),
 		RefreshToken:          refreshToken,
 		RefreshTokenExpiresAt: refreshExpires,
+		UsuarioID:             user.ID,
 	}
 
 	err = h.deviceStore.CreateOrUpdate(ctx, &device)
@@ -116,7 +117,7 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// cria os tokens de acesso
-	accessToken, expiresMS, err := GenerateAccessToken(payload.Identifier.User, device.ID)
+	accessToken, expiresMS, err := GenerateAccessToken(user.ID, device.ID)
 	if err != nil {
 		log.Printf("Failed to generate access token: %v", err)
 		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate access token"))

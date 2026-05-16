@@ -137,4 +137,13 @@ func encodeEventsIntoResponse(events []model.Evento, token model.SyncToken) Sync
 	}
 	response.NextBatch = token
 	return response
+// Essa struct representa o perfil completo
+type ProfileResponse struct {
+	DisplayName string `json:"displayname,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+}
+
+// DisplayNameRequest representa a requisição/resposta para displayname
+type DisplayNameRequest struct {
+	DisplayName string `json:"displayname"`
 }

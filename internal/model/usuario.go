@@ -27,6 +27,12 @@ type UsuarioCreate struct {
 	DataCriacao time.Time `json:"data_criacao_usuario"`
 }
 
+// ProfileResponse representa o formato de resposta que a API do Matrix exige
+type ProfileResponse struct {
+	DisplayName string `json:"displayname,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+}
+
 // ToUsuario converte um UsuarioCreate em um Usuario fazendo validação e hash da senha
 func (uc UsuarioCreate) ToUsuario() (Usuario, error) {
 	if !ValidateLocalPart(uc.LocalPart) {

@@ -9,6 +9,7 @@ type Evento struct {
 	Conteudo         string `json:"conteudo"`
 	OrigemServidorTS int64  `json:"origem_servidor_ts"`
 	StreamOrdering   int64  `json:"stream_ordering"`
+	TxnID            *string `json:"txn_id,omitempty"`
 }
 
 type ArestaEvento struct {

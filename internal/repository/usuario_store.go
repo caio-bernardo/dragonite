@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/caio-bernardo/dragonite/internal/model"
@@ -20,6 +21,10 @@ type UserStore interface {
 	Update(ctx context.Context, usuario *model.Usuario) error
 	Delete(ctx context.Context, id string) (*model.Usuario, error)
 	Search(ctx context.Context, term string, limit int) ([]model.Usuario, error)
+	GetNameAndPhotoByID(ctx context.Context, id string) (*model.Usuario, error)
+	GetProfileKeyByID(ctx context.Context, id string) (*model.Usuario, error)
+	ClearProfileKey(ctx context.Context, userID string, colunaDB string) error
+	UpdateProfileKey(ctx context.Context, userID string, colunaDB string, novoValor string) error
 }
 
 type usuarioStore struct {
@@ -146,28 +151,86 @@ func (s *usuarioStore) Delete(ctx context.Context, id_usuario string) (*model.Us
 // TODO: adicionar joins com as tabelas de salas (canal) e membros para respeitar
 // a visibilidade conforme a spec.
 func (s *usuarioStore) Search(ctx context.Context, term string, limit int) ([]model.Usuario, error) {
-    query := `
+	query := `
         SELECT id_usuario, nome_usuario, localpart_usuario, foto_usuario
         FROM usuario
         WHERE LOWER(id_usuario) LIKE LOWER($1)
            OR LOWER(nome_usuario) LIKE LOWER($1)
         LIMIT $2`
 
-    pattern := "%" + term + "%"
-    rows, err := s.db.QueryContext(ctx, query, pattern, limit)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	pattern := "%" + term + "%"
+	rows, err := s.db.QueryContext(ctx, query, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    usuarios := make([]model.Usuario, 0)
-    for rows.Next() {
-        var u model.Usuario
-        err = rows.Scan(&u.ID, &u.Nome, &u.LocalPart, &u.Foto)
-        if err != nil {
-            return nil, err
-        }
-        usuarios = append(usuarios, u)
-    }
-    return usuarios, nil
+	usuarios := make([]model.Usuario, 0)
+	for rows.Next() {
+		var u model.Usuario
+		err = rows.Scan(&u.ID, &u.Nome, &u.LocalPart, &u.Foto)
+		if err != nil {
+			return nil, err
+		}
+		usuarios = append(usuarios, u)
+	}
+	return usuarios, nil
+}
+
+// GetNameAndPhotoByID retorna o nome e a foto de um usuário pelo ID (intuitivo, não?).
+func (s *usuarioStore) GetNameAndPhotoByID(ctx context.Context, id string) (*model.Usuario, error) {
+
+	query := `SELECT nome_usuario, foto_usuario FROM Usuario WHERE id_usuario = $1`
+	row := s.db.QueryRowContext(ctx, query, id)
+
+	var d model.Usuario
+	err := row.Scan(&d.ID, &d.Nome, &d.Foto)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, types.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &d, nil
+}
+
+// ClearProfileKey define uma coluna específica do perfil como nula no banco de dados.
+func (s *usuarioStore) ClearProfileKey(ctx context.Context, userID string, colunaDB string) error {
+
+	query := fmt.Sprintf(`UPDATE Usuario SET %s = NULL WHERE id_usuario = $1`, colunaDB)
+
+	resultado, err := s.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return err
+	}
+
+	linhasAfetadas, _ := resultado.RowsAffected()
+	if linhasAfetadas == 0 {
+		return types.ErrNotFound
+	}
+
+	return nil
+}
+
+// UpdateProfileKey atualiza uma coluna específica do perfil com um novo valor
+func (s *usuarioStore) UpdateProfileKey(ctx context.Context, userID string, colunaDB string, novoValor string) error {
+	query := fmt.Sprintf(`UPDATE Usuario SET %s = $1 WHERE id_usuario = $2`, colunaDB)
+
+	resultado, err := s.db.ExecContext(ctx, query, novoValor, userID)
+	if err != nil {
+		return err
+	}
+
+	linhasAfetadas, err := resultado.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if linhasAfetadas == 0 {
+		return types.ErrNotFound
+	}
+
+	return nil
 }

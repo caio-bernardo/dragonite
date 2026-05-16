@@ -73,5 +73,24 @@ type JoinRoomResponse struct {
 type LeaveRoomRequest struct {
 	Reason *string `json:"reason,omitempty"`
 }
-
 // Resposta de leave é {} com 200 OK, então não precisa de struct dedicada
+
+// PUT /rooms/{roomId}/send/{eventType}/{txnId}
+
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#put_matrixclientv3roomsroomidsendeventtypetxnid
+type SendEventRequest map[string]any
+
+// Resposta de PUT /rooms/{roomId}/send/{eventType}/{txnId}
+type SendEventResponse struct {
+	EventID string `json:"event_id"`
+}
+
+// PUT /rooms/{roomId}/state/{eventType}/{stateKey}
+
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#put_matrixclientv3roomsroomidstateeventtypestateke
+type StateEventRequest map[string]any
+
+// Resposta de PUT /rooms/{roomId}/state/{eventType}/{stateKey}
+type StateEventResponse struct {
+	EventID string `json:"event_id"`
+}

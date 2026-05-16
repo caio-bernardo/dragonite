@@ -14,6 +14,7 @@ import (
 type EventoStore interface {
 	GetAll(ctx context.Context, filter util.Filter) ([]model.Evento, error)
 	GetByID(ctx context.Context, id string) (*model.Evento, error)
+	GetByTxnID(ctx context.Context, senderID, txnID string) (*model.Evento, error)
 	Create(ctx context.Context, props *model.Evento) error
 	Update(ctx context.Context, props *model.Evento) error
 	Delete(ctx context.Context, id string) (*model.Evento, error)
@@ -31,7 +32,7 @@ func NewEventoStore(db *sql.DB) EventoStore {
 }
 
 func (s *eventoStore) GetAll(ctx context.Context, filter util.Filter) ([]model.Evento, error) {
-	query := "SELECT e.id_evento, e.tipo_evento, e.fk_id_canal, e.fk_id_sender, e.state_key, e.conteudo_evento::text, e.origem_servidor_evento_ts, e.stream_ordering_evento FROM evento e"
+	query := "SELECT e.id_evento, e.tipo_evento, e.fk_id_canal, e.fk_id_sender, e.state_key, e.conteudo_evento::text, e.origem_servidor_evento_ts, e.stream_ordering_evento, e.txn_id FROM evento e"
 
 	rows, err := util.QueryRowsWithFilter(s.db, ctx, query, &filter, "e")
 	if err != nil {
@@ -42,7 +43,7 @@ func (s *eventoStore) GetAll(ctx context.Context, filter util.Filter) ([]model.E
 	eventos := make([]model.Evento, 0)
 	for rows.Next() {
 		var e model.Evento
-		err = rows.Scan(&e.ID, &e.Tipo, &e.CanalID, &e.SenderID, &e.StateKey, &e.Conteudo, &e.OrigemServidorTS, &e.StreamOrdering)
+		err = rows.Scan(&e.ID, &e.Tipo, &e.CanalID, &e.SenderID, &e.StateKey, &e.Conteudo, &e.OrigemServidorTS, &e.StreamOrdering, &e.TxnID)
 		if err != nil {
 			return nil, err
 		}
@@ -52,11 +53,31 @@ func (s *eventoStore) GetAll(ctx context.Context, filter util.Filter) ([]model.E
 }
 
 func (s *eventoStore) GetByID(ctx context.Context, id string) (*model.Evento, error) {
-	query := "SELECT id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento::text, origem_servidor_evento_ts, stream_ordering_evento FROM evento WHERE id_evento = $1;"
+	query := "SELECT id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento::text, origem_servidor_evento_ts, stream_ordering_evento, txn_id FROM evento WHERE id_evento = $1;"
 	row := s.db.QueryRowContext(ctx, query, id)
 
 	var e model.Evento
-	err := row.Scan(&e.ID, &e.Tipo, &e.CanalID, &e.SenderID, &e.StateKey, &e.Conteudo, &e.OrigemServidorTS, &e.StreamOrdering)
+	err := row.Scan(&e.ID, &e.Tipo, &e.CanalID, &e.SenderID, &e.StateKey, &e.Conteudo, &e.OrigemServidorTS, &e.StreamOrdering, &e.TxnID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, types.ErrNotFound
+		}
+		return nil, err
+	}
+	return &e, nil
+}
+
+func (s *eventoStore) GetByTxnID(ctx context.Context, senderID, txnID string) (*model.Evento, error) {
+	query := `SELECT id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key,
+	           conteudo_evento::text, origem_servidor_evento_ts, stream_ordering_evento, txn_id
+	          FROM evento
+	          WHERE fk_id_sender = $1 AND txn_id = $2`
+
+	var e model.Evento
+	err := s.db.QueryRowContext(ctx, query, senderID, txnID).Scan(
+		&e.ID, &e.Tipo, &e.CanalID, &e.SenderID, &e.StateKey,
+		&e.Conteudo, &e.OrigemServidorTS, &e.StreamOrdering, &e.TxnID,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, types.ErrNotFound
@@ -67,8 +88,8 @@ func (s *eventoStore) GetByID(ctx context.Context, id string) (*model.Evento, er
 }
 
 func (s *eventoStore) Create(ctx context.Context, props *model.Evento) error {
-	query := "INSERT INTO evento (id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento, origem_servidor_evento_ts, stream_ordering_evento) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8);"
-	_, err := s.db.ExecContext(ctx, query, props.ID, props.Tipo, props.CanalID, props.SenderID, props.StateKey, props.Conteudo, props.OrigemServidorTS, props.StreamOrdering)
+	query := "INSERT INTO evento (id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento, origem_servidor_evento_ts, txn_id) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8);"
+	_, err := s.db.ExecContext(ctx, query, props.ID, props.Tipo, props.CanalID, props.SenderID, props.StateKey, props.Conteudo, props.OrigemServidorTS, props.TxnID)
 	return err
 }
 
