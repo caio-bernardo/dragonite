@@ -8,6 +8,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/notifier"
 	"github.com/caio-bernardo/dragonite/internal/repository"
 	"github.com/caio-bernardo/dragonite/internal/services/client"
+	"github.com/caio-bernardo/dragonite/internal/services/federation"
 )
 
 // Registra os endpoints do servidor
@@ -23,10 +24,12 @@ func (s *AppServer) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	clientHandler := client.NewHandler(userStore, deviceStore, canalStore, usuarioCanalStore, eventoStore, notif)
+	federationHandler := federation.NewHandler()
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
+	federationHandler.RegisterRoutes(mux)
 
 	// wildcard
 	mux.HandleFunc("GET /", s.HelloWorldHandler)

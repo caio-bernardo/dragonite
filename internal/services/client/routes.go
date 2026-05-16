@@ -14,6 +14,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/services/client/rooms"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 type Handler struct {
@@ -47,8 +48,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middle
 
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
-  
-  	// Perfil do usuário
+
+	// Perfil do usuário
 	mux.HandleFunc("GET /_matrix/client/v3/profile/{userId}", h.getProfile)
 
 	// Chave do perfil do usuário
@@ -187,6 +188,7 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 
 	util.WriteJSON(w, http.StatusOK, response)
 }
+
 // mapMatrixKeyToDB converte a chave do Matrix para a coluna do bd.
 // Isso evita SQL Injection, pois não usamos a string do usuário direto na query.
 func mapMatrixKeyToDB(keyName string) string {
