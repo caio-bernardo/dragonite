@@ -25,8 +25,8 @@ type Handler struct {
 	notifier          notifier.Notifier
 }
 
-func NewHandler(userStore repository.UserStore, deviceStore repository.DeviceStore, canalStore repository.ChannelStore, usuarioCanalStore repository.UsuarioCanalStore, notifier notifier.Notifier) *Handler {
-	return &Handler{userStore: userStore, deviceStore: deviceStore, canalStore: canalStore, usuarioCanalStore: usuarioCanalStore, notifier: notifier}
+func NewHandler(userStore repository.UserStore, deviceStore repository.DeviceStore, canalStore repository.ChannelStore, usuarioCanalStore repository.UsuarioCanalStore, eventoStore repository.EventoStore, notif notifier.Notifier) *Handler {
+	return &Handler{userStore: userStore, deviceStore: deviceStore, canalStore: canalStore, usuarioCanalStore: usuarioCanalStore, eventoStore: eventoStore, notifier: notif}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middleware) {
@@ -123,10 +123,15 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	req.Filter = r.FormValue("filter")
 	req.FullState = r.FormValue("full_state") == "true"
 	req.SetPresence = SetPresence(r.FormValue("set_presence"))
-	timeout, err := strconv.Atoi(r.FormValue("timeout"))
-	if err != nil {
-		util.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_UNKNOWN, "could not parse timeout. Expected integer"))
-		return
+	timeoutStr := r.FormValue("timeout")
+	var timeout int
+	var err error
+	if timeoutStr != "" {
+		timeout, err = strconv.Atoi(timeoutStr)
+		if err != nil {
+			util.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_UNKNOWN, "could not parse timeout. Expected integer"))
+			return
+		}
 	}
 	req.Timeout = time.Duration(timeout) * time.Millisecond
 

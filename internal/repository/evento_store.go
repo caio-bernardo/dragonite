@@ -158,9 +158,9 @@ func (s *eventoStore) GetSince(ctx context.Context, userID string, since model.S
 
 	if len(canais) > 0 {
 		query := `
-			SELECT id_evento, tipo_evento, id_canal, id_sender, state_key, conteudo, origem_servidor_ts, stream_ordering
+			SELECT id_evento, tipo_evento, fk_id_canal, fk_id_sender, state_key, conteudo_evento::text, origem_servidor_evento_ts, stream_ordering_evento
 			FROM evento
-			WHERE stream_ordering > $1
+			WHERE stream_ordering_evento > $1
 			AND fk_id_canal = ANY($2)
 			ORDER BY stream_ordering_evento ASC
 			LIMIT 100
@@ -203,7 +203,7 @@ func (s *eventoStore) GetSince(ctx context.Context, userID string, since model.S
 // GetMaxGlobalStreamOrdering retorna o maior valor de stream_ordering global
 func (s *eventoStore) GetMaxGlobalStreamOrdering(ctx context.Context) (int64, error) {
 	var max sql.NullInt64
-	query := `SELECT MAX(stream_ordering) FROM evento`
+	query := `SELECT MAX(stream_ordering_evento) FROM evento`
 	if err := s.db.QueryRowContext(ctx, query).Scan(&max); err != nil {
 		return 0, fmt.Errorf("failed to get max global stream ordering: %w", err)
 	}
@@ -214,7 +214,7 @@ func (s *eventoStore) GetMaxGlobalStreamOrdering(ctx context.Context) (int64, er
 }
 
 func (s *eventoStore) getCanaisIDByUserID(ctx context.Context, userID string) ([]string, error) {
-	query := `SELECT DISTINCT canal_id FROM evento WHERE sender_id = $1`
+	query := `SELECT DISTINCT fk_id_canal FROM usuario_canal WHERE fk_id_usuario = $1`
 
 	rows, err := s.db.QueryContext(ctx, query, userID)
 	if err != nil {

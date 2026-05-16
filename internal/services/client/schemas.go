@@ -135,5 +135,6 @@ func encodeEventsIntoResponse(events []model.Evento, token model.SyncToken) Sync
 			},
 		}
 	}
+	response.NextBatch = token
 	return response
 }

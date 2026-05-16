@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type SyncToken struct {
 	RoomEvents  int64
@@ -10,6 +13,19 @@ type SyncToken struct {
 
 func (t SyncToken) Encode() string {
 	return fmt.Sprintf("s%d_%d_%d", t.RoomEvents, t.Receipts, t.AccountData)
+}
+
+func (t SyncToken) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Encode())
+}
+
+func (t *SyncToken) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*t = ParseToken(s)
+	return nil
 }
 
 func ParseToken(t string) SyncToken {

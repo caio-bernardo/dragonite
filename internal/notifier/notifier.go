@@ -8,7 +8,7 @@ type Notifier interface {
 	Notify(userID string)
 }
 
-// TODO: implement this
+// TODO: implement this in the future
 type redisNotifier struct{}
 
 type inMemoryNotifier struct {

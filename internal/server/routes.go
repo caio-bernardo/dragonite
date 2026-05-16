@@ -17,11 +17,12 @@ func (s *AppServer) RegisterRoutes() http.Handler {
 	deviceStore := repository.NewDispositivoStore(s.db.Get())
 	canalStore := repository.NewChannelStore(s.db.Get())
 	usuarioCanalStore := repository.NewUsuarioCanalStore(s.db.Get())
+	eventoStore := repository.NewEventoStore(s.db.Get())
 	notif := notifier.NewInMemoryNotifier()
 
 	mux := http.NewServeMux()
 
-	clientHandler := client.NewHandler(userStore, deviceStore, canalStore, usuarioCanalStore, notif)
+	clientHandler := client.NewHandler(userStore, deviceStore, canalStore, usuarioCanalStore, eventoStore, notif)
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
