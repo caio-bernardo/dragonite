@@ -137,6 +137,8 @@ func encodeEventsIntoResponse(events []model.Evento, token model.SyncToken) Sync
 	}
 	response.NextBatch = token
 	return response
+}
+
 // Essa struct representa o perfil completo
 type ProfileResponse struct {
 	DisplayName string `json:"displayname,omitempty"`
