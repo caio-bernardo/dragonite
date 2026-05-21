@@ -218,7 +218,8 @@ func (ff *Filter) ToQuery(values *[]any, tableAlias string) string {
 		}
 
 		str, fminus := strings.CutPrefix(v, "-")
-		query.WriteString(" " + str)
+		query.WriteString(" ")
+		query.WriteString(str)
 		if fminus {
 			query.WriteString(" DESC")
 		}
@@ -227,11 +228,13 @@ func (ff *Filter) ToQuery(values *[]any, tableAlias string) string {
 	// paginação
 	if ff.Offset > 0 {
 		*values = append(*values, ff.Offset)
-		query.WriteString(" OFFSET $" + strconv.Itoa(len(*values)))
+		query.WriteString(" OFFSET $")
+		query.WriteString(strconv.Itoa(len(*values)))
 	}
 	if ff.Limit > 0 {
 		*values = append(*values, ff.Limit)
-		query.WriteString(" LIMIT $" + strconv.Itoa(len(*values)))
+		query.WriteString(" LIMIT $")
+		query.WriteString(strconv.Itoa(len(*values)))
 	}
 	return query.String()
 }
