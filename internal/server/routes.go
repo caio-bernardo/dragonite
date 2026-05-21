@@ -20,6 +20,9 @@ func (s *AppServer) RegisterRoutes() http.Handler {
 	usuarioCanalStore := repository.NewUsuarioCanalStore(s.db.Get())
 	eventoStore := repository.NewEventoStore(s.db.Get())
 	notif := notifier.NewInMemoryNotifier()
+	// TODO: descomentar essa linha quando precisar de um worker
+	// ctx := context.Background()
+	// worker := worker.NewWorkerQueue(ctx, s.Config)
 
 	mux := http.NewServeMux()
 
