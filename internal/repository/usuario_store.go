@@ -183,7 +183,7 @@ func (s *usuarioStore) GetNameAndPhotoByID(ctx context.Context, id string) (*mod
 	row := s.db.QueryRowContext(ctx, query, id)
 
 	var d model.Usuario
-	err := row.Scan(&d.ID, &d.Nome, &d.Foto)
+	err := row.Scan(&d.Nome, &d.Foto)
 
 	if err != nil {
 		if err == sql.ErrNoRows {

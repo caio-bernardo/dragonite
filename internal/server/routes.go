@@ -27,7 +27,7 @@ func (s *AppServer) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	clientHandler := client.NewHandler(userStore, deviceStore, canalStore, usuarioCanalStore, eventoStore, notif)
-	federationHandler := federation.NewHandler(&s.Config)
+	federationHandler := federation.NewHandler(&s.Config, userStore)
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)

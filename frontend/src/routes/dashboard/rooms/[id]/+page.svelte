@@ -16,7 +16,11 @@
         matrixService.syncState === 'CATCHUP'
     );
 
-    let messages = $state(matrixService.getRoomMessages(roomId));
+    let messageVersion = $state(0);
+    let messages = $derived.by(() => {
+        messageVersion;
+        return matrixService.getRoomMessages(roomId);
+    });
     let roomName = $derived(matrixService.getRoomName(roomId));
 
     let currentMessage = $state('');
@@ -69,7 +73,7 @@
         scrollToBottom('instant');
 
         unsubscribe = matrixService.onRoomTimeline(roomId, () => {
-            messages = matrixService.getRoomMessages(roomId);
+            messageVersion++;
             setTimeout(() => scrollToBottom('smooth'), 0);
         });
 

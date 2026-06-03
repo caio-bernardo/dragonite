@@ -3,7 +3,7 @@
 	import { matrixService } from '$lib/stores/matrix.svelte';
 	import { ArrowLeftRightIcon, HouseIcon, MessageSquare, SettingsIcon } from '@lucide/svelte';
 	import { Avatar, Navigation } from '@skeletonlabs/skeleton-svelte';
-  import UserSearchBar from '$lib/components/UserSearchBar.svelte';
+    import UserSearchBar from '$lib/components/UserSearchBar.svelte';
 
 	let isLayoutRail = $state(true);
 
