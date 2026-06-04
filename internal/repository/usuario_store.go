@@ -198,7 +198,7 @@ func (s *usuarioStore) GetNameAndPhotoByID(ctx context.Context, id string) (*mod
 // ClearProfileKey define uma coluna específica do perfil como nula no banco de dados.
 func (s *usuarioStore) ClearProfileKey(ctx context.Context, userID string, colunaDB string) error {
 
-	query := fmt.Sprintf(`UPDATE Usuario SET %s = NULL WHERE id_usuario = $1`, colunaDB)
+	query := fmt.Sprintf(`UPDATE Usuario SET %s = '' WHERE id_usuario = $1`, colunaDB)
 
 	resultado, err := s.db.ExecContext(ctx, query, userID)
 	if err != nil {

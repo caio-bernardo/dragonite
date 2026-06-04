@@ -66,9 +66,13 @@ func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	since := r.URL.Query().Get("since")
 
-	canais, nextBatch, err := h.canalStore.ListPublic(ctx, limit, since)
+	params := repository.ListPublicParams{
+		Limit:      limit,
+		SinceToken: r.URL.Query().Get("since"),
+	}
+
+	canais, nextBatch, _, total, err := h.canalStore.ListPublic(ctx, params)
 	if err != nil {
 		log.Printf("[ERROR] GET /publicRooms: %v", err)
 		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to list rooms"))
@@ -97,13 +101,12 @@ func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
 			AvatarURL:        foto,
 			CanonicalAlias:   canal.CanonAlias,
 			NumJoinedMembers: canal.MemberCount,
-			WorldReadable:    false,
+			WorldReadable:    canal.HistoryVisibility == "world_readable",
 			GuestCanJoin:     canal.GuestAccess == "can_join",
 			JoinRule:         &jr,
 		})
 	}
 
-	total := len(chunks)
 	resp := PublicRoomsResponse{
 		Chunk:                  chunks,
 		TotalRoomCountEstimate: &total,

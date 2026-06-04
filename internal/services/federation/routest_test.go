@@ -11,12 +11,17 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	"strings"
+	"bytes"
 
 	"github.com/caio-bernardo/dragonite/internal/model"
+	"github.com/caio-bernardo/dragonite/internal/repository"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
 	_ "github.com/joho/godotenv/autoload"
 )
+
+// --- Mock UserStore ---
 
 type mockUserStore struct {
 	users map[string]*model.Usuario
@@ -49,6 +54,69 @@ func (m *mockUserStore) Search(_ context.Context, _ string, _ int) ([]model.Usua
 func (m *mockUserStore) ClearProfileKey(_ context.Context, _ string, _ string) error               { return nil }
 func (m *mockUserStore) UpdateProfileKey(_ context.Context, _ string, _ string, _ string) error    { return nil }
 
+// --- Mock CanalStore ---
+
+type mockCanalStore struct {
+	canais []model.Canal
+}
+
+func newMockCanalStore(canais ...model.Canal) *mockCanalStore {
+	return &mockCanalStore{canais: canais}
+}
+
+func (m *mockCanalStore) ListPublic(_ context.Context, params repository.ListPublicParams) ([]model.Canal, string, string, int, error) {
+	// Filtra canais públicos com optional search term
+	filtered := make([]model.Canal, 0)
+	for _, c := range m.canais {
+		if !c.IsPublic {
+			continue
+		}
+		if params.SearchTerm != "" {
+			term := strings.ToLower(params.SearchTerm)
+			if !strings.Contains(strings.ToLower(c.Nome), term) &&
+				!strings.Contains(strings.ToLower(c.Descricao), term) {
+				continue
+			}
+		}
+		filtered = append(filtered, c)
+	}
+
+	total := len(filtered)
+
+	offset := 0
+	if params.SinceToken != "" {
+		fmt.Sscanf(params.SinceToken, "%d", &offset)
+	}
+	if offset > len(filtered) {
+		offset = len(filtered)
+	}
+	filtered = filtered[offset:]
+
+	nextBatch := ""
+	if params.Limit > 0 && len(filtered) > params.Limit {
+		filtered = filtered[:params.Limit]
+		nextBatch = fmt.Sprintf("%d", offset+params.Limit)
+	}
+
+	prevBatch := ""
+	if offset > 0 && params.Limit > 0 {
+		if prev := offset - params.Limit; prev >= 0 {
+			prevBatch = fmt.Sprintf("%d", prev)
+		}
+	}
+
+	return filtered, nextBatch, prevBatch, total, nil
+}
+
+func (m *mockCanalStore) GetAll(_ context.Context, _ util.Filter) ([]model.Canal, error)             { return nil, nil }
+func (m *mockCanalStore) GetByID(_ context.Context, _ string) (*model.Canal, error)                  { return nil, nil }
+func (m *mockCanalStore) Create(_ context.Context, _ *model.Canal) error                             { return nil }
+func (m *mockCanalStore) Update(_ context.Context, _ *model.Canal) error                             { return nil }
+func (m *mockCanalStore) Delete(_ context.Context, _ string) (*model.Canal, error)                   { return nil, nil }
+func (m *mockCanalStore) UpdateMemberCount(_ context.Context, _ string, _ int) error                 { return nil }
+func (m *mockCanalStore) UpsertEstadoAtual(_ context.Context, _ *model.EstadoAtualCanal) error       { return nil }
+
+// Helpers
 
 func MockConfig() types.ServerConfig {
 	publicKey, privateKey, _ := ed25519.GenerateKey(nil)
@@ -61,13 +129,15 @@ func MockConfig() types.ServerConfig {
 	}
 }
 
-func NewTestHandler(userStore *mockUserStore) *Handler {
+func NewTestHandler(userStore *mockUserStore, canalStore *mockCanalStore) *Handler {
     config := MockConfig()
-    return NewHandler(&config, userStore)
+    return NewHandler(&config, userStore, canalStore)
 }
 
+// --- Testes existentes ---
+
 func TestFederationVersion(t *testing.T) {
-	h := NewTestHandler(newMockUserStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getVersion))
 	defer server.Close()
 
@@ -93,7 +163,7 @@ func TestFederationVersion(t *testing.T) {
 }
 
 func TestGetKeyServer(t *testing.T) {
-	h := NewTestHandler(newMockUserStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getServerKey))
 	defer server.Close()
 
@@ -160,7 +230,7 @@ func TestGetKeyServer(t *testing.T) {
 // Testes do getProfile 
 
 func TestGetProfile_MissingUserID(t *testing.T) {
-	h := NewTestHandler(newMockUserStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -176,7 +246,7 @@ func TestGetProfile_MissingUserID(t *testing.T) {
 }
 
 func TestGetProfile_NonLocalUser(t *testing.T) {
-	h := NewTestHandler(newMockUserStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -192,7 +262,7 @@ func TestGetProfile_NonLocalUser(t *testing.T) {
 }
 
 func TestGetProfile_InvalidField(t *testing.T) {
-	h := NewTestHandler(newMockUserStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -208,7 +278,7 @@ func TestGetProfile_InvalidField(t *testing.T) {
 }
 
 func TestGetProfile_UserNotFound(t *testing.T) {
-	h := NewTestHandler(newMockUserStore()) // store vazio
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore()) // store vazio
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -229,7 +299,7 @@ func TestGetProfile_FullProfile(t *testing.T) {
 		Nome: "Alice",
 		Foto: "mxc://dragonite.com/abc123",
 	}
-	h := NewTestHandler(newMockUserStore(usuario))
+	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -261,7 +331,7 @@ func TestGetProfile_OnlyDisplayName(t *testing.T) {
 		Nome: "Alice",
 		Foto: "mxc://dragonite.com/abc123",
 	}
-	h := NewTestHandler(newMockUserStore(usuario))
+	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -293,7 +363,7 @@ func TestGetProfile_OnlyAvatarURL(t *testing.T) {
 		Nome: "Alice",
 		Foto: "mxc://dragonite.com/abc123",
 	}
-	h := NewTestHandler(newMockUserStore(usuario))
+	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore())
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -316,5 +386,201 @@ func TestGetProfile_OnlyAvatarURL(t *testing.T) {
 	}
 	if body.DisplayName != "" {
 		t.Errorf("expected displayname to be absent, got '%s'", body.DisplayName)
+	}
+}
+
+// --- Testes getPublicRooms ---
+
+func TestGetPublicRooms_Empty(t *testing.T) {
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	server := httptest.NewServer(http.HandlerFunc(h.getPublicRooms))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body PublicRoomsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Chunk) != 0 {
+		t.Errorf("expected empty chunk, got %d items", len(body.Chunk))
+	}
+}
+
+func TestGetPublicRooms_WithRooms(t *testing.T) {
+	roomType := "m.space"
+	canais := []model.Canal{
+		{
+			ID: "!room1:dragonite.com", Nome: "General", Descricao: "General chat",
+			IsPublic: true, JoinRules: "public", GuestAccess: "can_join",
+			HistoryVisibility: "world_readable", MemberCount: 10, RoomType: &roomType,
+		},
+		{
+			ID: "!room2:dragonite.com", Nome: "Off-Topic", IsPublic: true,
+			JoinRules: "public", GuestAccess: "forbidden",
+			HistoryVisibility: "shared", MemberCount: 3,
+		},
+	}
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	server := httptest.NewServer(http.HandlerFunc(h.getPublicRooms))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body PublicRoomsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Chunk) != 2 {
+		t.Fatalf("expected 2 rooms, got %d", len(body.Chunk))
+	}
+	// Verifica conversão de campos
+	first := body.Chunk[0]
+	if first.RoomID != "!room1:dragonite.com" {
+		t.Errorf("expected room1, got %s", first.RoomID)
+	}
+	if !first.GuestCanJoin {
+		t.Error("expected guest_can_join true")
+	}
+	if !first.WorldReadable {
+		t.Error("expected world_readable true")
+	}
+	if first.RoomType != "m.space" {
+		t.Errorf("expected room_type 'm.space', got %q", first.RoomType)
+	}
+	// Segunda sala: guest_can_join e world_readable devem ser false
+	second := body.Chunk[1]
+	if second.GuestCanJoin {
+		t.Error("expected guest_can_join false")
+	}
+	if second.WorldReadable {
+		t.Error("expected world_readable false")
+	}
+}
+
+func TestGetPublicRooms_Pagination(t *testing.T) {
+	canais := []model.Canal{
+		{ID: "!r1:dragonite.com", Nome: "Room 1", IsPublic: true, MemberCount: 3},
+		{ID: "!r2:dragonite.com", Nome: "Room 2", IsPublic: true, MemberCount: 2},
+		{ID: "!r3:dragonite.com", Nome: "Room 3", IsPublic: true, MemberCount: 1},
+	}
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	server := httptest.NewServer(http.HandlerFunc(h.getPublicRooms))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "?limit=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var body PublicRoomsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Chunk) != 2 {
+		t.Fatalf("expected 2 rooms, got %d", len(body.Chunk))
+	}
+	if body.NextBatch == "" {
+		t.Error("expected next_batch to be set")
+	}
+	if body.PrevBatch != "" {
+		t.Errorf("expected prev_batch absent na primeira página, got %q", body.PrevBatch)
+	}
+}
+
+// --- Testes postPublicRooms ---
+
+func TestPostPublicRooms_BadJSON(t *testing.T) {
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	server := httptest.NewServer(http.HandlerFunc(h.postPublicRooms))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL, "application/json", bytes.NewBufferString("{invalid json}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPostPublicRooms_WithFilter(t *testing.T) {
+	canais := []model.Canal{
+		{ID: "!cheese:dragonite.com", Nome: "Cheese Lovers", IsPublic: true, MemberCount: 10},
+		{ID: "!code:dragonite.com", Nome: "Coding Talk", IsPublic: true, MemberCount: 5},
+	}
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	server := httptest.NewServer(http.HandlerFunc(h.postPublicRooms))
+	defer server.Close()
+
+	reqBody, _ := json.Marshal(PublicRoomsRequest{
+		Filter: &PublicRoomsFilter{GenericSearchTerm: "cheese"},
+	})
+	resp, err := http.Post(server.URL, "application/json", bytes.NewBuffer(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body PublicRoomsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Chunk) != 1 {
+		t.Fatalf("expected 1 room após filtro, got %d", len(body.Chunk))
+	}
+	if body.Chunk[0].RoomID != "!cheese:dragonite.com" {
+		t.Errorf("expected cheese room, got %s", body.Chunk[0].RoomID)
+	}
+}
+
+func TestPostPublicRooms_EmptyBody(t *testing.T) {
+	canais := []model.Canal{
+		{ID: "!r1:dragonite.com", Nome: "Room 1", IsPublic: true, MemberCount: 5},
+	}
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	server := httptest.NewServer(http.HandlerFunc(h.postPublicRooms))
+	defer server.Close()
+
+	// Body vazio é válido — equivale a POST sem filtros
+	resp, err := http.Post(server.URL, "application/json", bytes.NewBufferString("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body PublicRoomsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Chunk) != 1 {
+		t.Fatalf("expected 1 room, got %d", len(body.Chunk))
 	}
 }

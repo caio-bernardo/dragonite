@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"fmt"
 	
 
 	"github.com/caio-bernardo/dragonite/internal/model"
@@ -111,6 +112,116 @@ func TestCanalStoreCRUDAndCleanup(t *testing.T) {
 	}
 }
 
+func TestCanalStore_ListPublic_Pagination(t *testing.T) {
+	resetTables(t)
+
+	owner := model.Usuario{
+		ID: "@page-owner:example.com", LocalPart: "page-owner",
+		Nome: "Owner", Senha: "password", DataCriacao: baseTime,
+	}
+	insertUsuario(t, owner)
+
+	store := NewChannelStore(testDB)
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		c := model.Canal{
+			ID:                fmt.Sprintf("!page-room%d:example.com", i),
+			LocalPart:         fmt.Sprintf("page-room%d", i),
+			ServerName:        "example.com",
+			Nome:              fmt.Sprintf("Page Room %d", i),
+			IsPublic:          true,
+			JoinRules:         "public",
+			GuestAccess:       "forbidden",
+			HistoryVisibility: "shared",
+			Versao:            "11",
+			CriadorID:         owner.ID,
+			MemberCount:       i,
+			DataCriacao:       baseTime,
+		}
+		if err := store.Create(ctx, &c); err != nil {
+			t.Fatalf("Create() failed: %v", err)
+		}
+	}
+
+	// Primeira página: limit=2
+	page1, nextBatch, prevBatch, total, err := store.ListPublic(ctx, ListPublicParams{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListPublic() page 1 failed: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("expected 2 canais na página 1, got %d", len(page1))
+	}
+	if nextBatch == "" {
+		t.Fatal("expected nextBatch na página 1")
+	}
+	if prevBatch != "" {
+		t.Fatalf("expected empty prevBatch na página 1, got %q", prevBatch)
+	}
+	if total != 3 {
+		t.Fatalf("expected total 3, got %d", total)
+	}
+
+	// Segunda página usando o token retornado
+	page2, nextBatch2, prevBatch2, _, err := store.ListPublic(ctx, ListPublicParams{Limit: 2, SinceToken: nextBatch})
+	if err != nil {
+		t.Fatalf("ListPublic() page 2 failed: %v", err)
+	}
+	if len(page2) != 1 {
+		t.Fatalf("expected 1 canal na página 2, got %d", len(page2))
+	}
+	if nextBatch2 != "" {
+		t.Fatalf("expected empty nextBatch na página 2, got %q", nextBatch2)
+	}
+	if prevBatch2 == "" {
+		t.Fatal("expected prevBatch na página 2")
+	}
+}
+
+func TestCanalStore_ListPublic_SearchTerm(t *testing.T) {
+	resetTables(t)
+
+	owner := model.Usuario{
+		ID: "@search-owner:example.com", LocalPart: "search-owner",
+		Nome: "Owner", Senha: "password", DataCriacao: baseTime,
+	}
+	insertUsuario(t, owner)
+
+	store := NewChannelStore(testDB)
+	ctx := context.Background()
+
+	cheese := model.Canal{
+		ID: "!cheese:example.com", LocalPart: "cheese", ServerName: "example.com",
+		Nome: "Cheese Lovers", Descricao: "All about cheese", IsPublic: true,
+		JoinRules: "public", GuestAccess: "forbidden", HistoryVisibility: "shared",
+		Versao: "11", CriadorID: owner.ID, MemberCount: 10, DataCriacao: baseTime,
+	}
+	other := model.Canal{
+		ID: "!other:example.com", LocalPart: "other", ServerName: "example.com",
+		Nome: "Unrelated Room", Descricao: "Nothing here", IsPublic: true,
+		JoinRules: "public", GuestAccess: "forbidden", HistoryVisibility: "shared",
+		Versao: "11", CriadorID: owner.ID, MemberCount: 2, DataCriacao: baseTime,
+	}
+	for _, c := range []model.Canal{cheese, other} {
+		if err := store.Create(ctx, &c); err != nil {
+			t.Fatalf("Create() failed: %v", err)
+		}
+	}
+
+	canais, _, _, total, err := store.ListPublic(ctx, ListPublicParams{SearchTerm: "cheese"})
+	if err != nil {
+		t.Fatalf("ListPublic() with search failed: %v", err)
+	}
+	if len(canais) != 1 {
+		t.Fatalf("expected 1 canal, got %d", len(canais))
+	}
+	if canais[0].ID != cheese.ID {
+		t.Fatalf("expected cheese room, got %s", canais[0].ID)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+}
 
 func TestCanalStore_ListPublic(t *testing.T) {
 	resetTables(t)
@@ -143,7 +254,7 @@ func TestCanalStore_ListPublic(t *testing.T) {
 		}
 	}
 
-	canais, nextBatch, err := store.ListPublic(ctx, 10, "")
+	canais, nextBatch, prevBatch, total, err := store.ListPublic(ctx, ListPublicParams{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListPublic() failed: %v", err)
 	}
@@ -156,6 +267,12 @@ func TestCanalStore_ListPublic(t *testing.T) {
 	}
 	if nextBatch != "" {
 		t.Fatalf("expected empty nextBatch, got %q", nextBatch)
+	}
+	if prevBatch != "" {
+		t.Fatalf("expected empty prevBatch, got %q", prevBatch)
+	}
+	if total != 2 {
+		t.Fatalf("expected total 2, got %d", total)
 	}
 }
 

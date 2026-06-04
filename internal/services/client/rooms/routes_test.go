@@ -13,6 +13,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/model"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	"github.com/caio-bernardo/dragonite/internal/repository"
 )
 
 // MockChannelStore is a mock implementation of repository.ChannelStore for testing
@@ -23,6 +24,7 @@ type MockChannelStore struct {
 	getByIDErr           error
 	listPublicResult     []model.Canal
 	listPublicNextBatch  string
+	listPublicTotal      int
 	updateMemberCountErr error
 	upsertEstadoAtualErr error
 }
@@ -49,8 +51,8 @@ func (m *MockChannelStore) Delete(ctx context.Context, id_canal string) (*model.
 	return nil, nil
 }
 
-func (m *MockChannelStore) ListPublic(ctx context.Context, limit int, sinceToken string) ([]model.Canal, string, error) {
-	return m.listPublicResult, m.listPublicNextBatch, nil
+func (m *MockChannelStore) ListPublic(_ context.Context, _ repository.ListPublicParams) ([]model.Canal, string, string, int, error) {
+    return m.listPublicResult, m.listPublicNextBatch, "", m.listPublicTotal, nil
 }
 
 func (m *MockChannelStore) UpdateMemberCount(ctx context.Context, canalID string, delta int) error {

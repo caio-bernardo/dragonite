@@ -13,6 +13,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/model"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	"github.com/caio-bernardo/dragonite/internal/repository"
 )
 
 // MockUserStore is a mock implementation of repository.UserStore for testing
@@ -116,8 +117,8 @@ func (m *MockChannelStore) Delete(ctx context.Context, id_canal string) (*model.
 	return nil, nil
 }
 
-func (m *MockChannelStore) ListPublic(ctx context.Context, limit int, sinceToken string) ([]model.Canal, string, error) {
-	return []model.Canal{}, "", nil
+func (m *MockChannelStore) ListPublic(_ context.Context, _ repository.ListPublicParams) ([]model.Canal, string, string, int, error) {
+    return nil, "", "", 0, nil
 }
 
 func (m *MockChannelStore) UpdateMemberCount(ctx context.Context, canalID string, delta int) error {
@@ -128,7 +129,6 @@ func (m *MockChannelStore) UpsertEstadoAtual(ctx context.Context, estado *model.
 	return nil
 }
 
-// Implementa repository.UsuarioCanalStore com 8 métodos conforme usuario_canal_store.go
 // Implementa repository.UsuarioCanalStore com 8 métodos conforme usuario_canal_store.go
 
 type MockUsuarioCanalStore struct{}

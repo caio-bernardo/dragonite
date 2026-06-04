@@ -4,11 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-
+	"strings"
+	
 	"github.com/caio-bernardo/dragonite/internal/model"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
+
+// ListPublicParams encapsula todos os parâmetros de busca de canais públicos
+type ListPublicParams struct {
+    Limit      int       // 0 = sem limite
+    SinceToken string    // token opaco de paginação (encoda offset)
+    SearchTerm string    // vazio = sem filtro de texto
+    RoomTypes  []*string // nil = sem filtro; nil dentro do slice = salas sem tipo
+}
 
 type ChannelStore interface {
 	GetAll(ctx context.Context, filter util.Filter) ([]model.Canal, error)
@@ -17,7 +26,7 @@ type ChannelStore interface {
 	Update(ctx context.Context, props *model.Canal) error
 	Delete(ctx context.Context, id_canal string) (*model.Canal, error)
 	// Adicionados para suporte às rotas Matrix de rooms
-	ListPublic(ctx context.Context, limit int, sinceToken string) ([]model.Canal, string, error)
+	ListPublic(ctx context.Context, params ListPublicParams) (canais []model.Canal, nextBatch string, prevBatch string, total int, err error)
 	UpdateMemberCount(ctx context.Context, canalID string, delta int) error
 	UpsertEstadoAtual(ctx context.Context, estado *model.EstadoAtualCanal) error
 }
@@ -143,38 +152,96 @@ func (s *canalStore) Delete(ctx context.Context, id_canal string) (*model.Canal,
 	return canal, nil
 }
 
-func (s *canalStore) ListPublic(ctx context.Context, limit int, sinceToken string) ([]model.Canal, string, error) {
-	offset := 0
-	if sinceToken != "" {
-		fmt.Sscanf(sinceToken, "%d", &offset)
-	}
+func (s *canalStore) ListPublic(ctx context.Context, params ListPublicParams) ([]model.Canal, string, string, int, error) {
+    offset := 0
+    if params.SinceToken != "" {
+        fmt.Sscanf(params.SinceToken, "%d", &offset)
+    }
 
-	query := "SELECT" + canalColumns + `
-		FROM canal
-		WHERE is_public_canal = true
-		ORDER BY member_count DESC
-		LIMIT $1 OFFSET $2`
+    // Constrói WHERE dinamicamente
+    conditions := []string{"is_public_canal = true"}
+    args := []any{}
 
-	rows, err := s.db.QueryContext(ctx, query, limit, offset)
-	if err != nil {
-		return nil, "", err
-	}
-	defer rows.Close()
+    if params.SearchTerm != "" {
+        n := len(args) + 1
+        conditions = append(conditions, fmt.Sprintf(
+            "(nome_canal ILIKE $%d OR descricao_canal ILIKE $%d OR canonical_alias ILIKE $%d)",
+            n, n, n,
+        ))
+        args = append(args, "%"+params.SearchTerm+"%")
+    }
 
-	canais := make([]model.Canal, 0)
-	for rows.Next() {
-		var c model.Canal
-		if err := scanCanal(rows, &c); err != nil {
-			return nil, "", err
-		}
-		canais = append(canais, c)
-	}
+    if params.RoomTypes != nil {
+        var typeConds []string
+        for _, rt := range params.RoomTypes {
+            if rt == nil {
+                typeConds = append(typeConds, "room_type IS NULL")
+            } else {
+                n := len(args) + 1
+                typeConds = append(typeConds, fmt.Sprintf("room_type = $%d", n))
+                args = append(args, *rt)
+            }
+        }
+        if len(typeConds) > 0 {
+            conditions = append(conditions, "("+strings.Join(typeConds, " OR ")+")")
+        }
+    }
 
-	nextBatch := ""
-	if len(canais) == limit {
-		nextBatch = fmt.Sprintf("%d", offset+limit)
-	}
-	return canais, nextBatch, rows.Err()
+    where := "WHERE " + strings.Join(conditions, " AND ")
+
+    // Contagem total
+    var total int
+    if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM canal "+where, args...).Scan(&total); err != nil {
+        return nil, "", "", 0, err
+    }
+
+    // Query de dados com paginação
+    dataArgs := make([]any, len(args))
+    copy(dataArgs, args)
+
+    var limitClause string
+    if params.Limit > 0 {
+        dataArgs = append(dataArgs, params.Limit, offset)
+        limitClause = fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(dataArgs)-1, len(dataArgs))
+    } else {
+        dataArgs = append(dataArgs, offset)
+        limitClause = fmt.Sprintf(" OFFSET $%d", len(dataArgs))
+    }
+
+    dataQuery := "SELECT" + canalColumns + " FROM canal " + where +
+        " ORDER BY member_count DESC" + limitClause
+
+    rows, err := s.db.QueryContext(ctx, dataQuery, dataArgs...)
+    if err != nil {
+        return nil, "", "", 0, err
+    }
+    defer rows.Close()
+
+    canais := make([]model.Canal, 0)
+    for rows.Next() {
+        var c model.Canal
+        if err := scanCanal(rows, &c); err != nil {
+            return nil, "", "", 0, err
+        }
+        canais = append(canais, c)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, "", "", 0, err
+    }
+
+    // Tokens de paginação
+    nextBatch := ""
+    if params.Limit > 0 && len(canais) == params.Limit {
+        nextBatch = fmt.Sprintf("%d", offset+params.Limit)
+    }
+    prevBatch := ""
+    if offset > 0 && params.Limit > 0 {
+        if prev := offset - params.Limit; prev >= 0 {
+            prevBatch = fmt.Sprintf("%d", prev)
+        }
+    }
+
+    return canais, nextBatch, prevBatch, total, nil
 }
 
 func (s *canalStore) UpdateMemberCount(ctx context.Context, canalID string, delta int) error {

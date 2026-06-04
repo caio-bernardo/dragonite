@@ -7,6 +7,8 @@ import (
 	"time"
 	"strings"
 	"net/http"
+	"strconv"
+	"encoding/json"
 
 	"github.com/caio-bernardo/dragonite/internal/model"
 	"github.com/caio-bernardo/dragonite/internal/repository"
@@ -17,16 +19,19 @@ import (
 type Handler struct {
 	config *types.ServerConfig
 	userStore repository.UserStore
+	canalStore repository.ChannelStore
 }
 
-func NewHandler(config *types.ServerConfig, userStore repository.UserStore) *Handler {
-	return &Handler{config: config, userStore: userStore}
+func NewHandler(config *types.ServerConfig, userStore repository.UserStore, canalStore repository.ChannelStore) *Handler {
+	return &Handler{config: config, userStore: userStore, canalStore: canalStore}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /_matrix/federation/v1/version", h.getVersion)
 	mux.HandleFunc("GET /_matrix/key/v2/server", h.getServerKey)
 	mux.HandleFunc("GET /_matrix/federation/v1/query/profile", h.getProfile)
+	mux.HandleFunc("GET /_matrix/federation/v1/publicRooms", h.getPublicRooms)
+    mux.HandleFunc("POST /_matrix/federation/v1/publicRooms", h.postPublicRooms)
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -114,4 +119,85 @@ func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	util.WriteJSON(w, http.StatusOK, res)
+}
+
+// canalToChunk converte um Canal para o formato PublishedRoomsChunk da spec Matrix.
+// guest_can_join e world_readable são derivados dos campos de estado da sala.
+func canalToChunk(c model.Canal) PublishedRoomsChunk {
+    chunk := PublishedRoomsChunk{
+        RoomID:           c.ID,
+        NumJoinedMembers: c.MemberCount,
+        GuestCanJoin:     c.GuestAccess == "can_join",
+        WorldReadable:    c.HistoryVisibility == "world_readable",
+        Name:             c.Nome,
+        Topic:            c.Descricao,
+        AvatarURL:        c.Foto,
+        JoinRule:         c.JoinRules,
+    }
+    if c.CanonAlias != nil {
+        chunk.CanonicalAlias = *c.CanonAlias
+    }
+    if c.RoomType != nil {
+        chunk.RoomType = *c.RoomType
+    }
+    return chunk
+}
+
+func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
+    q := r.URL.Query()
+
+    limit := 0
+    if s := q.Get("limit"); s != "" {
+        if v, err := strconv.Atoi(s); err == nil {
+            limit = v
+        }
+    }
+
+    params := repository.ListPublicParams{
+        Limit:      limit,
+        SinceToken: q.Get("since"),
+    }
+
+    h.writePublicRooms(w, r, params)
+}
+
+func (h *Handler) postPublicRooms(w http.ResponseWriter, r *http.Request) {
+    var req PublicRoomsRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        util.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_BAD_JSON, err.Error()))
+        return
+    }
+
+    params := repository.ListPublicParams{
+        Limit:      req.Limit,
+        SinceToken: req.Since,
+    }
+    if req.Filter != nil {
+        params.SearchTerm = req.Filter.GenericSearchTerm
+        params.RoomTypes = req.Filter.RoomTypes
+    }
+
+    h.writePublicRooms(w, r, params)
+}
+
+// writePublicRooms executa a busca e escreve a resposta, compartilhado entre GET e POST
+func (h *Handler) writePublicRooms(w http.ResponseWriter, r *http.Request, params repository.ListPublicParams) {
+    canais, nextBatch, prevBatch, total, err := h.canalStore.ListPublic(r.Context(), params)
+    if err != nil {
+        util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, err.Error()))
+        return
+    }
+
+    chunks := make([]PublishedRoomsChunk, 0, len(canais))
+    for _, c := range canais {
+        chunks = append(chunks, canalToChunk(c))
+    }
+
+    resp := PublicRoomsResponse{
+        Chunk:                  chunks,
+        NextBatch:              nextBatch,
+        PrevBatch:              prevBatch,
+        TotalRoomCountEstimate: &total,
+    }
+    util.WriteJSON(w, http.StatusOK, resp)
 }
