@@ -221,6 +221,10 @@ func (m *MockEventoStore) GetMaxGlobalStreamOrdering(ctx context.Context) (int64
 	return 0, nil
 }
 
+func (m *MockEventoStore) GetCurrentStateEvents(_ context.Context, _ string) ([]model.Evento, error) {
+    return nil, nil
+}
+
 // MockNotifier é uma implementação mock de notifier.Notifier para testes
 type MockNotifier struct {
 	subscriptions map[string][]chan struct{}

@@ -1,5 +1,9 @@
 package federation
 
+import (
+	"encoding/json"
+)
+
 type VersionResponse struct {
 	Server struct {
 		Name    string `json:"name"`
@@ -51,4 +55,60 @@ type PublicRoomsRequest struct {
     Limit                int                `json:"limit,omitempty"`
     Since                string             `json:"since,omitempty"`
     ThirdPartyInstanceID string             `json:"third_party_instance_id,omitempty"`
+}
+
+// - make_join --
+
+type MembershipContent struct {
+    JoinAuthorisedViaUsersServer string `json:"join_authorised_via_users_server,omitempty"`
+    Membership                   string `json:"membership"`
+}
+
+// EventTemplate é o template de evento unsigned retornado pelo make_join.
+type EventTemplate struct {
+    Content        MembershipContent `json:"content"`
+    Origin         string            `json:"origin"`
+    OriginServerTS int64             `json:"origin_server_ts"`
+    RoomID         string            `json:"room_id"`
+    Sender         string            `json:"sender"`
+    StateKey       string            `json:"state_key"`
+    Type           string            `json:"type"`
+}
+
+type MakeJoinResponse struct {
+    Event       EventTemplate `json:"event"`
+    RoomVersion string        `json:"room_version"`
+}
+
+// -- send_join --
+
+// SendJoinRequest é o PDU assinado enviado pelo servidor remoto
+type SendJoinRequest struct {
+    Content        MembershipContent            `json:"content"`
+    Origin         string                       `json:"origin"`
+    OriginServerTS int64                        `json:"origin_server_ts"`
+    Sender         string                       `json:"sender"`
+    StateKey       string                       `json:"state_key"`
+    Type           string                       `json:"type"`
+    RoomID         string                       `json:"room_id"`
+    EventID        string                       `json:"event_id"`
+    Signatures     map[string]map[string]string `json:"signatures"`
+}
+
+// StatePDU representa um evento de estado no formato Matrix para a resposta do send_join
+type StatePDU struct {
+    EventID        string            `json:"event_id"`
+    Type           string            `json:"type"`
+    RoomID         string            `json:"room_id"`
+    Sender         string            `json:"sender"`
+    StateKey       string            `json:"state_key"`
+    OriginServerTS int64             `json:"origin_server_ts"`
+    Content        json.RawMessage   `json:"content"`
+}
+
+type SendJoinResponse struct {
+    AuthChain      []StatePDU `json:"auth_chain"`
+    State          []StatePDU `json:"state"`
+    MembersOmitted bool       `json:"members_omitted,omitempty"`
+    ServersInRoom  []string   `json:"servers_in_room,omitempty"`
 }

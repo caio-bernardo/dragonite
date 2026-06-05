@@ -1161,3 +1161,76 @@ func TestGetCanaisIDByUserIDReturnsDistinctCanalIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestEventoStore_GetCurrentStateEvents(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+
+	user := model.Usuario{
+		ID: "@state-user:example.com", LocalPart: "state-user",
+		Nome: "State User", Senha: "password", DataCriacao: baseTime,
+	}
+	insertUsuario(t, user)
+
+	canal := model.Canal{
+		ID: "!state-room:example.com", LocalPart: "state-room",
+		ServerName: "example.com", Nome: "State Room", IsPublic: true,
+		JoinRules: "public", GuestAccess: "forbidden", HistoryVisibility: "shared",
+		Versao: "11", CriadorID: user.ID, MemberCount: 1, DataCriacao: baseTime,
+	}
+	insertCanal(t, canal)
+
+	stateEventos := []model.Evento{
+		{
+			ID: "$create:example.com", Tipo: "m.room.create",
+			CanalID: canal.ID, SenderID: user.ID, StateKey: "",
+			Conteudo: `{"creator":"@state-user:example.com"}`, 
+			OrigemServidorTS: 1000,  StreamOrdering:   9001,
+		},
+		{
+			ID: "$join-rules:example.com", Tipo: "m.room.join_rules",
+			CanalID: canal.ID, SenderID: user.ID, StateKey: "",
+			Conteudo: `{"join_rule":"public"}`, OrigemServidorTS: 1001, StreamOrdering: 9002,
+		},
+		{
+			ID: "$member:example.com", Tipo: "m.room.member",
+			CanalID: canal.ID, SenderID: user.ID, StateKey: user.ID,
+			Conteudo: `{"membership":"join"}`, OrigemServidorTS: 1002, StreamOrdering: 9003,
+		},
+	}
+	for _, e := range stateEventos {
+		insertEvento(t, e)
+	}
+	insertEstadoAtualCanal(t, canal.ID, "m.room.create", "", stateEventos[0].ID)
+	insertEstadoAtualCanal(t, canal.ID, "m.room.join_rules", "", stateEventos[1].ID)
+	insertEstadoAtualCanal(t, canal.ID, "m.room.member", user.ID, stateEventos[2].ID)
+
+	store := NewEventoStore(testDB)
+
+	got, err := store.GetCurrentStateEvents(ctx, canal.ID)
+	if err != nil {
+		t.Fatalf("GetCurrentStateEvents() failed: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 state events, got %d", len(got))
+	}
+
+	gotIDs := make(map[string]bool)
+	for _, e := range got {
+		gotIDs[e.ID] = true
+	}
+	for _, e := range stateEventos {
+		if !gotIDs[e.ID] {
+			t.Errorf("expected event %s in result", e.ID)
+		}
+	}
+
+	// Sala desconhecida deve retornar lista vazia
+	got2, err := store.GetCurrentStateEvents(ctx, "!naoexiste:example.com")
+	if err != nil {
+		t.Fatalf("GetCurrentStateEvents() for unknown room failed: %v", err)
+	}
+	if len(got2) != 0 {
+		t.Fatalf("expected 0 events for unknown room, got %d", len(got2))
+	}
+}

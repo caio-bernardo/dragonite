@@ -116,6 +116,7 @@ type MockEventoStore struct {
 	createdEvento   *model.Evento
 	getByTxnIDErr   error
 	getByTxnIDEvent *model.Evento
+	getCurrentStateEventsResult []model.Evento
 }
 
 func (m *MockEventoStore) GetAll(ctx context.Context, filter util.Filter) ([]model.Evento, error) {
@@ -156,6 +157,9 @@ func (m *MockEventoStore) GetMaxGlobalStreamOrdering(ctx context.Context) (int64
 	return 0, nil
 }
 
+func (m *MockEventoStore) GetCurrentStateEvents(ctx context.Context, roomID string) ([]model.Evento, error) {
+	return m.getCurrentStateEventsResult, nil
+}
 // MockNotifier is a mock implementation of notifier.Notifier for testing
 type MockNotifier struct {
 	notifiedUsers map[string]int

@@ -21,6 +21,7 @@ type EventoStore interface {
 	CheckNew(ctx context.Context, userID string, since model.SyncToken) (bool, error)
 	GetSince(ctx context.Context, userID string, since model.SyncToken) ([]model.Evento, model.SyncToken, error)
 	GetMaxGlobalStreamOrdering(ctx context.Context) (int64, error)
+	GetCurrentStateEvents(ctx context.Context, roomID string) ([]model.Evento, error)
 }
 
 type eventoStore struct {
@@ -256,4 +257,31 @@ func (s *eventoStore) getCanaisIDByUserID(ctx context.Context, userID string) ([
 	}
 
 	return canais, nil
+}
+
+func (s *eventoStore) GetCurrentStateEvents(ctx context.Context, roomID string) ([]model.Evento, error) {
+    query := `
+        SELECT e.id_evento, e.tipo_evento, e.fk_id_canal, e.fk_id_sender,
+               e.state_key, e.conteudo_evento::text, e.origem_servidor_evento_ts,
+               e.stream_ordering_evento, e.txn_id
+        FROM estado_atual_canal eac
+        JOIN evento e ON e.id_evento = eac.fk_id_evento
+        WHERE eac.fk_id_canal = $1`
+
+    rows, err := s.db.QueryContext(ctx, query, roomID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    eventos := make([]model.Evento, 0)
+    for rows.Next() {
+        var e model.Evento
+        if err := rows.Scan(&e.ID, &e.Tipo, &e.CanalID, &e.SenderID, &e.StateKey,
+            &e.Conteudo, &e.OrigemServidorTS, &e.StreamOrdering, &e.TxnID); err != nil {
+            return nil, err
+        }
+        eventos = append(eventos, e)
+    }
+    return eventos, rows.Err()
 }

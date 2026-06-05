@@ -13,6 +13,7 @@ import (
 	"time"
 	"strings"
 	"bytes"
+	"net/url"
 
 	"github.com/caio-bernardo/dragonite/internal/model"
 	"github.com/caio-bernardo/dragonite/internal/repository"
@@ -109,12 +110,65 @@ func (m *mockCanalStore) ListPublic(_ context.Context, params repository.ListPub
 }
 
 func (m *mockCanalStore) GetAll(_ context.Context, _ util.Filter) ([]model.Canal, error)             { return nil, nil }
-func (m *mockCanalStore) GetByID(_ context.Context, _ string) (*model.Canal, error)                  { return nil, nil }
+
+func (m *mockCanalStore) GetByID(_ context.Context, id string) (*model.Canal, error) {
+    for i, c := range m.canais {
+        if c.ID == id {
+            return &m.canais[i], nil
+        }
+    }
+    return nil, types.ErrNotFound
+}
+
 func (m *mockCanalStore) Create(_ context.Context, _ *model.Canal) error                             { return nil }
 func (m *mockCanalStore) Update(_ context.Context, _ *model.Canal) error                             { return nil }
 func (m *mockCanalStore) Delete(_ context.Context, _ string) (*model.Canal, error)                   { return nil, nil }
 func (m *mockCanalStore) UpdateMemberCount(_ context.Context, _ string, _ int) error                 { return nil }
 func (m *mockCanalStore) UpsertEstadoAtual(_ context.Context, _ *model.EstadoAtualCanal) error       { return nil }
+
+// --- Mock EventoStore ---
+
+type mockEventoStore struct {
+    stateEventos []model.Evento
+    createErr    error
+}
+
+func (m *mockEventoStore) Create(_ context.Context, _ *model.Evento) error {
+    return m.createErr
+}
+
+func (m *mockEventoStore) GetCurrentStateEvents(_ context.Context, _ string) ([]model.Evento, error) {
+    return m.stateEventos, nil
+}
+
+func (m *mockEventoStore) GetAll(_ context.Context, _ util.Filter) ([]model.Evento, error)                          { return nil, nil }
+func (m *mockEventoStore) GetByID(_ context.Context, _ string) (*model.Evento, error)                               { return nil, nil }
+func (m *mockEventoStore) GetByTxnID(_ context.Context, _, _ string) (*model.Evento, error)                         { return nil, nil }
+func (m *mockEventoStore) Update(_ context.Context, _ *model.Evento) error                                          { return nil }
+func (m *mockEventoStore) Delete(_ context.Context, _ string) (*model.Evento, error)                                { return nil, nil }
+func (m *mockEventoStore) CheckNew(_ context.Context, _ string, _ model.SyncToken) (bool, error)                    { return false, nil }
+func (m *mockEventoStore) GetSince(_ context.Context, _ string, t model.SyncToken) ([]model.Evento, model.SyncToken, error) { return nil, t, nil }
+func (m *mockEventoStore) GetMaxGlobalStreamOrdering(_ context.Context) (int64, error)                              { return 0, nil }
+
+// --- Mock UsuarioCanalStore ---
+
+type mockUsuarioCanalStore struct {
+    members []string
+}
+
+func (m *mockUsuarioCanalStore) AddOrUpdateMembership(_ context.Context, _ *model.UsuarioCanal) error { return nil }
+
+func (m *mockUsuarioCanalStore) GetJoinedUserIDsInRoom(_ context.Context, _ string) ([]string, error) {
+    return m.members, nil
+}
+
+func (m *mockUsuarioCanalStore) GetAll(_ context.Context, _ util.Filter) ([]model.UsuarioCanal, error)           { return nil, nil }
+func (m *mockUsuarioCanalStore) GetByComposedID(_ context.Context, _, _ string) (*model.UsuarioCanal, error)     { return nil, nil }
+func (m *mockUsuarioCanalStore) GetAllByUsuarioID(_ context.Context, _ string) ([]model.UsuarioCanal, error)     { return nil, nil }
+func (m *mockUsuarioCanalStore) GetAllByCanalID(_ context.Context, _ string) ([]model.UsuarioCanal, error)       { return nil, nil }
+func (m *mockUsuarioCanalStore) Create(_ context.Context, _ *model.UsuarioCanal) error                         	 { return nil }
+func (m *mockUsuarioCanalStore) Update(_ context.Context, _ *model.UsuarioCanal) error                         	 { return nil }
+func (m *mockUsuarioCanalStore) Delete(_ context.Context, _, _ string) (*model.UsuarioCanal, error)              { return nil, nil }
 
 // Helpers
 
@@ -129,15 +183,46 @@ func MockConfig() types.ServerConfig {
 	}
 }
 
-func NewTestHandler(userStore *mockUserStore, canalStore *mockCanalStore) *Handler {
+// signJoinRequest assina um SendJoinRequest com a chave privada fornecida.
+func signJoinRequest(t *testing.T, privKey ed25519.PrivateKey, keyID string, req SendJoinRequest) SendJoinRequest {
+    t.Helper()
+    payload := map[string]interface{}{
+        "content":          req.Content,
+        "origin":           req.Origin,
+        "origin_server_ts": req.OriginServerTS,
+        "room_id":          req.RoomID,
+        "sender":           req.Sender,
+        "state_key":        req.StateKey,
+        "type":             req.Type,
+    }
+    canonical, err := util.CanonicalJSON(payload)
+    if err != nil {
+        t.Fatalf("signJoinRequest: failed to canonicalize: %v", err)
+    }
+    sig := base64.RawStdEncoding.EncodeToString(ed25519.Sign(privKey, canonical))
+    req.Signatures = map[string]map[string]string{
+        req.Origin: {keyID: sig},
+    }
+    return req
+}
+
+// newMuxServer cria um httptest.Server com o handler registrado no padrão correto.
+// Necessário para testes de handlers que usam r.PathValue().
+func newMuxServer(pattern string, h http.HandlerFunc) *httptest.Server {
+    mux := http.NewServeMux()
+    mux.HandleFunc(pattern, h)
+    return httptest.NewServer(mux)
+}
+
+func NewTestHandler(userStore *mockUserStore, canalStore *mockCanalStore, eventoStore *mockEventoStore, ucStore *mockUsuarioCanalStore) *Handler {
     config := MockConfig()
-    return NewHandler(&config, userStore, canalStore)
+    return NewHandler(&config, userStore, canalStore, eventoStore, ucStore)
 }
 
 // --- Testes existentes ---
 
 func TestFederationVersion(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getVersion))
 	defer server.Close()
 
@@ -163,7 +248,7 @@ func TestFederationVersion(t *testing.T) {
 }
 
 func TestGetKeyServer(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getServerKey))
 	defer server.Close()
 
@@ -230,7 +315,7 @@ func TestGetKeyServer(t *testing.T) {
 // Testes do getProfile 
 
 func TestGetProfile_MissingUserID(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -246,7 +331,7 @@ func TestGetProfile_MissingUserID(t *testing.T) {
 }
 
 func TestGetProfile_NonLocalUser(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -262,7 +347,7 @@ func TestGetProfile_NonLocalUser(t *testing.T) {
 }
 
 func TestGetProfile_InvalidField(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -278,7 +363,7 @@ func TestGetProfile_InvalidField(t *testing.T) {
 }
 
 func TestGetProfile_UserNotFound(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore()) // store vazio
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil) // store vazio
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -299,7 +384,7 @@ func TestGetProfile_FullProfile(t *testing.T) {
 		Nome: "Alice",
 		Foto: "mxc://dragonite.com/abc123",
 	}
-	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -331,7 +416,7 @@ func TestGetProfile_OnlyDisplayName(t *testing.T) {
 		Nome: "Alice",
 		Foto: "mxc://dragonite.com/abc123",
 	}
-	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -363,7 +448,7 @@ func TestGetProfile_OnlyAvatarURL(t *testing.T) {
 		Nome: "Alice",
 		Foto: "mxc://dragonite.com/abc123",
 	}
-	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(usuario), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getProfile))
 	defer server.Close()
 
@@ -392,7 +477,7 @@ func TestGetProfile_OnlyAvatarURL(t *testing.T) {
 // --- Testes getPublicRooms ---
 
 func TestGetPublicRooms_Empty(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getPublicRooms))
 	defer server.Close()
 
@@ -429,7 +514,7 @@ func TestGetPublicRooms_WithRooms(t *testing.T) {
 			HistoryVisibility: "shared", MemberCount: 3,
 		},
 	}
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getPublicRooms))
 	defer server.Close()
 
@@ -480,7 +565,7 @@ func TestGetPublicRooms_Pagination(t *testing.T) {
 		{ID: "!r2:dragonite.com", Nome: "Room 2", IsPublic: true, MemberCount: 2},
 		{ID: "!r3:dragonite.com", Nome: "Room 3", IsPublic: true, MemberCount: 1},
 	}
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.getPublicRooms))
 	defer server.Close()
 
@@ -508,7 +593,7 @@ func TestGetPublicRooms_Pagination(t *testing.T) {
 // --- Testes postPublicRooms ---
 
 func TestPostPublicRooms_BadJSON(t *testing.T) {
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore())
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.postPublicRooms))
 	defer server.Close()
 
@@ -528,7 +613,7 @@ func TestPostPublicRooms_WithFilter(t *testing.T) {
 		{ID: "!cheese:dragonite.com", Nome: "Cheese Lovers", IsPublic: true, MemberCount: 10},
 		{ID: "!code:dragonite.com", Nome: "Coding Talk", IsPublic: true, MemberCount: 5},
 	}
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.postPublicRooms))
 	defer server.Close()
 
@@ -561,7 +646,7 @@ func TestPostPublicRooms_EmptyBody(t *testing.T) {
 	canais := []model.Canal{
 		{ID: "!r1:dragonite.com", Nome: "Room 1", IsPublic: true, MemberCount: 5},
 	}
-	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...))
+	h := NewTestHandler(newMockUserStore(), newMockCanalStore(canais...), nil, nil)
 	server := httptest.NewServer(http.HandlerFunc(h.postPublicRooms))
 	defer server.Close()
 
@@ -583,4 +668,350 @@ func TestPostPublicRooms_EmptyBody(t *testing.T) {
 	if len(body.Chunk) != 1 {
 		t.Fatalf("expected 1 room, got %d", len(body.Chunk))
 	}
+}
+
+// --- Testes GET makeJoin ---
+
+func TestMakeJoin_RoomNotFound(t *testing.T) {
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(), nil, nil)
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/" +
+        url.PathEscape("!naoexiste:dragonite.com") + "/" +
+        url.PathEscape("@bob:remote.com"))
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusNotFound {
+        t.Errorf("expected 404, got %d", resp.StatusCode)
+    }
+}
+
+func TestMakeJoin_IncompatibleVersion(t *testing.T) {
+    canal := model.Canal{
+        ID: "!room:dragonite.com", IsPublic: true, JoinRules: "public", Versao: "11",
+    }
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), nil, nil)
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/" +
+        url.PathEscape(canal.ID) + "/" +
+        url.PathEscape("@bob:remote.com") + "?ver=1&ver=2") // não inclui "11"
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestMakeJoin_RoomNotPublic(t *testing.T) {
+    canal := model.Canal{
+        ID: "!room:dragonite.com", IsPublic: false, JoinRules: "invite", Versao: "11",
+    }
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), nil, nil)
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/" +
+        url.PathEscape(canal.ID) + "/" +
+        url.PathEscape("@bob:remote.com") + "?ver=11")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusForbidden {
+        t.Errorf("expected 403, got %d", resp.StatusCode)
+    }
+}
+
+func TestMakeJoin_HappyPath(t *testing.T) {
+    userID := "@bob:remote.com"
+    canal := model.Canal{
+        ID: "!room:dragonite.com", IsPublic: true, JoinRules: "public", Versao: "11",
+    }
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), nil, nil)
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/" +
+        url.PathEscape(canal.ID) + "/" +
+        url.PathEscape(userID) + "?ver=11")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("expected 200, got %d", resp.StatusCode)
+    }
+
+    var body MakeJoinResponse
+    if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+        t.Fatal(err)
+    }
+    if body.RoomVersion != canal.Versao {
+        t.Errorf("expected room_version %q, got %q", canal.Versao, body.RoomVersion)
+    }
+    if body.Event.Type != "m.room.member" {
+        t.Errorf("expected type m.room.member, got %q", body.Event.Type)
+    }
+    if body.Event.Sender != userID {
+        t.Errorf("expected sender %q, got %q", userID, body.Event.Sender)
+    }
+    if body.Event.StateKey != userID {
+        t.Errorf("expected state_key %q, got %q", userID, body.Event.StateKey)
+    }
+    if body.Event.Content.Membership != "join" {
+        t.Errorf("expected membership join, got %q", body.Event.Content.Membership)
+    }
+    if body.Event.RoomID != canal.ID {
+        t.Errorf("expected room_id %q, got %q", canal.ID, body.Event.RoomID)
+    }
+}
+
+// --- Testes PUT makeJoin ---
+
+func TestSendJoin_RoomNotFound(t *testing.T) {
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(), &mockEventoStore{}, &mockUsuarioCanalStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+        RoomID: "!naoexiste:dragonite.com",
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape("!naoexiste:dragonite.com")+"/"+url.PathEscape("$event:remote.com"),
+        bytes.NewBuffer(body))
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusNotFound {
+        t.Errorf("expected 404, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_BadJSON(t *testing.T) {
+    canal := model.Canal{ID: "!room:dragonite.com", IsPublic: true}
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), &mockEventoStore{}, &mockUsuarioCanalStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape(canal.ID)+"/"+url.PathEscape("$event:remote.com"),
+        bytes.NewBufferString("{invalid}"))
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_InvalidEventType(t *testing.T) {
+    canal := model.Canal{ID: "!room:dragonite.com", IsPublic: true}
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), &mockEventoStore{}, &mockUsuarioCanalStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.message", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape(canal.ID)+"/"+url.PathEscape("$e:remote.com"),
+        bytes.NewBuffer(body))
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_SenderNotEqualStateKey(t *testing.T) {
+    canal := model.Canal{ID: "!room:dragonite.com", IsPublic: true}
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), &mockEventoStore{}, &mockUsuarioCanalStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@alice:remote.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape(canal.ID)+"/"+url.PathEscape("$e:remote.com"),
+        bytes.NewBuffer(body))
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_SenderNotFromOrigin(t *testing.T) {
+    canal := model.Canal{ID: "!room:dragonite.com", IsPublic: true}
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), &mockEventoStore{}, &mockUsuarioCanalStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    // sender pertence a outro.com mas origin é remote.com
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:outro.com", StateKey: "@bob:outro.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape(canal.ID)+"/"+url.PathEscape("$e:remote.com"),
+        bytes.NewBuffer(body))
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_InvalidSignature(t *testing.T) {
+    canal := model.Canal{ID: "!room:dragonite.com", IsPublic: true}
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), &mockEventoStore{}, &mockUsuarioCanalStore{})
+
+    // keyFetcher retorna uma chave diferente da usada para assinar
+    wrongPub, _, _ := ed25519.GenerateKey(nil)
+    h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+        return "ed25519:remote", wrongPub, nil
+    }
+
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    _, realPriv, _ := ed25519.GenerateKey(nil)
+    joinReq := signJoinRequest(t, realPriv, "ed25519:remote", SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+        Origin: "remote.com", RoomID: canal.ID, EventID: "$e:remote.com",
+        OriginServerTS: time.Now().UnixMilli(),
+        Content:        MembershipContent{Membership: "join"},
+    })
+    body, _ := json.Marshal(joinReq)
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape(canal.ID)+"/"+url.PathEscape("$e:remote.com"),
+        bytes.NewBuffer(body))
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_HappyPath(t *testing.T) {
+    remotePub, remotePriv, _ := ed25519.GenerateKey(nil)
+    remoteKeyID := "ed25519:remote"
+    remoteOrigin := "remote.com"
+
+    canal := model.Canal{
+        ID: "!room:dragonite.com", IsPublic: true, JoinRules: "public", Versao: "11",
+    }
+    eventoStore := &mockEventoStore{}
+    ucStore := &mockUsuarioCanalStore{members: []string{"@existing:dragonite.com"}}
+
+    h := NewTestHandler(newMockUserStore(), newMockCanalStore(canal), eventoStore, ucStore)
+    h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+        return remoteKeyID, remotePub, nil
+    }
+
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    joinReq := signJoinRequest(t, remotePriv, remoteKeyID, SendJoinRequest{
+        Type:           "m.room.member",
+        Sender:         "@bob:" + remoteOrigin,
+        StateKey:       "@bob:" + remoteOrigin,
+        Origin:         remoteOrigin,
+        RoomID:         canal.ID,
+        EventID:        "$join-event:" + remoteOrigin,
+        OriginServerTS: time.Now().UnixMilli(),
+        Content:        MembershipContent{Membership: "join"},
+    })
+    body, _ := json.Marshal(joinReq)
+
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/"+
+            url.PathEscape(canal.ID)+"/"+url.PathEscape("$join-event:"+remoteOrigin),
+        bytes.NewBuffer(body))
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyBytes)
+    }
+
+    var respBody SendJoinResponse
+    if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+        t.Fatal(err)
+    }
+    // state e auth_chain devem estar presentes (mesmo que vazios)
+    if respBody.State == nil {
+        t.Error("expected state to be non-nil")
+    }
+    if respBody.AuthChain == nil {
+        t.Error("expected auth_chain to be non-nil")
+    }
+    // servers_in_room deve incluir o servidor do membro existente
+    foundDragonite := false
+    for _, s := range respBody.ServersInRoom {
+        if s == "dragonite.com" {
+            foundDragonite = true
+        }
+    }
+    if !foundDragonite {
+        t.Errorf("expected dragonite.com in servers_in_room, got %v", respBody.ServersInRoom)
+    }
 }
