@@ -5,6 +5,14 @@ CREATE TABLE IF NOT EXISTS Canal (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS Canal_Alias (
+    id_canal VARCHAR(255) NOT NULL,
+    alias VARCHAR(255) NOT NULL,
+    id_evento VARCHAR(255) NOT NULL,
+
+    PRIMARY KEY (id_canal, alias)
+);
+
 CREATE TABLE IF NOT EXISTS Canal_Extremidades (
     id_canal VARCHAR(255) NOT NULL REFERENCES Canal(id_canal),
     id_evento VARCHAR(255) NOT NULL REFERENCES Evento(id_evento),
