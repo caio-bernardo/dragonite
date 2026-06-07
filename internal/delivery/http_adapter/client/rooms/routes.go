@@ -16,14 +16,14 @@ import (
 // Handler agrupa as dependências dos handlers de rooms.
 // Mesmo padrão de auth.Handler.
 type Handler struct {
-	directoryService      usecase.DirectoryService
-	roomAdminService      usecase.RoomAdminService
-	roomMembershipService usecase.RoomMembershipService
-	roomInteractions      usecase.RoomInteractionService
+	directoryService      *usecase.DirectoryService
+	roomAdminService      *usecase.RoomAdminService
+	roomMembershipService *usecase.RoomMembershipService
+	roomInteractions      *usecase.RoomInteractionService
 	serverName            string
 }
 
-func NewHandler(serverName string, directoryService usecase.DirectoryService, roomAdminService usecase.RoomAdminService, roomInteractions usecase.RoomInteractionService) *Handler {
+func NewHandler(serverName string, directoryService *usecase.DirectoryService, roomAdminService *usecase.RoomAdminService, roomInteractions *usecase.RoomInteractionService) *Handler {
 	return &Handler{
 		serverName:       serverName,
 		directoryService: directoryService,

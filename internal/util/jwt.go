@@ -1,4 +1,4 @@
-package auth
+package util
 
 import (
 	"crypto/rand"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/golang-jwt/jwt/v5"
-	_ "github.com/joho/godotenv/autoload"
 )
 
 var AccessTokenExpiration = 15 * time.Minute
@@ -15,7 +14,7 @@ var RefreshTokenExpiration = 30 * 24 * time.Hour
 
 // GenerateAccessToken gera um token de acesso JWT para o usuário e dispositivo
 // especificados, retorna o token, o tempo de expiração e uma mensagem de erro.
-func GenerateAccessToken(userID, jwtToken string, deviceID string) (string, int64, error) {
+func GenerateAccessToken(userID, deviceID, jwtToken, serverName string) (string, int64, error) {
 	expirationTime := time.Now().Add(AccessTokenExpiration)
 
 	claims := &types.MatrixClaims{

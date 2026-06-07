@@ -29,22 +29,28 @@ func main() {
 	}
 	defer dbPool.Close()
 
-	// cria storage
 	// storage implementa TODAS as funções que cada interface requer
 	storage := postgres.NewPostgresStorage(dbPool)
-
-	// cria eventBus
-	eventBus := eventbus.NewEventBus()
+	notifier := postgres.NewPostgresNotifier(dbPool)
+	// eventBus := eventbus.NewEventBus()
 
 	// cria usecases
-	usuarioService := usecase.NewUsuarioService(storage, storage, storage, eventBus)
-	systemService := usecase.NewHealthService(storage)
+	// TODO: implementar storage apropriadamente
+	authService := usecase.NewAuthService()
 	dirService := usecase.NewDirectoryService(storage, storage)
 	profileService := usecase.NewProfileService(storage)
-	syncService := usecase.NewSyncService(storage)
+	roomAdminService := usecase.NewRoomAdminService(storage)
+	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, , storage)
+	syncService := usecase.NewSyncService(storage, notifier)
+	systemService := usecase.NewHealthService(storage)
+	usuarioService := usecase.NewUsuarioService(storage, storage, storage, eventBus)
 
 	// cria servidor
-	server := http_adapter.NewServer(config.ServerPort, config.JWTToken, *usuarioService, *systemService, *dirService, *profileService, *syncService)
+	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
+		config.ServerName, authService, dirService, profileService,
+		roomAdminService, roomInteractionsService, syncService, systemService,
+		usuarioService,
+	)
 
 	// cria um novo channel do tipo booleano e espaço de memória 1 byte
 	// Um channel é um meio de comunicação entre threads (goroutines)

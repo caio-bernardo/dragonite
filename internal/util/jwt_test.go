@@ -1,24 +1,21 @@
-package auth
+package util
 
 import (
 	"testing"
 	"time"
 
-	"github.com/caio-bernardo/dragonite/internal/types"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestGenerateAccessToken(t *testing.T) {
-	originalKey := types.JWTSecretKey
-	types.JWTSecretKey = []byte("test-secret")
-	defer func() {
-		types.JWTSecretKey = originalKey
-	}()
+	JWTSecretKey := "test-secret"
+	serverName := "test-homeserver"
 
 	userID := "@alice:example.com"
 	deviceID := "DEVICE123"
 
-	tokenString, expiresMS, err := GenerateAccessToken(userID, types.JWTSecretKey, deviceID)
+	tokenString, expiresMS, err := GenerateAccessToken(userID, deviceID, JWTSecretKey, serverName)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -30,7 +27,7 @@ func TestGenerateAccessToken(t *testing.T) {
 	}
 
 	parsedToken, err := jwt.ParseWithClaims(tokenString, &types.MatrixClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return types.JWTSecretKey, nil
+		return JWTSecretKey, nil
 	})
 	if err != nil {
 		t.Fatalf("failed to parse token: %v", err)

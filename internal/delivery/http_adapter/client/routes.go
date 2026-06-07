@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/auth"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/profile"
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/rooms"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
@@ -14,14 +16,36 @@ import (
 )
 
 type Handler struct {
-	userService      usecase.UsuarioService
-	syncService      usecase.SyncService
-	directoryService usecase.DirectoryService
-	profileService   usecase.ProfileService
+	userService      *usecase.UsuarioService
+	syncService      *usecase.SyncService
+	directoryService *usecase.DirectoryService
+	profileService   *usecase.ProfileService
+	authService      *usecase.AuthService
+	roomAdmin        *usecase.RoomAdminService
+	roomInteractions *usecase.RoomInteractionService
+	serverName       string
 }
 
-func NewHandler(userStore usecase.UsuarioService, directoryStore usecase.DirectoryService, profileStore usecase.ProfileService, syncStore usecase.SyncService) *Handler {
-	return &Handler{userService: userStore, directoryService: directoryStore, profileService: profileStore, syncService: syncStore}
+func NewHandler(
+	serverName string,
+	authService *usecase.AuthService,
+	userStore *usecase.UsuarioService,
+	directoryStore *usecase.DirectoryService,
+	profileStore *usecase.ProfileService,
+	syncStore *usecase.SyncService,
+	roomAdmin *usecase.RoomAdminService,
+	roomInteractions *usecase.RoomInteractionService,
+) *Handler {
+	return &Handler{
+		serverName:       serverName,
+		userService:      userStore,
+		directoryService: directoryStore,
+		profileService:   profileStore,
+		syncService:      syncStore,
+		roomAdmin:        roomAdmin,
+		roomInteractions: roomInteractions,
+		authService:      authService,
+	}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
@@ -29,12 +53,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.HandleFunc("GET /_matrix/client/versions", h.getVersions)
 
 	// autenticação
-	// auth := auth.NewHandler(h.userStore, h.deviceStore)
-	// auth.RegisterRoutes(mux, authMiddleware)
+	auth := auth.NewHandler(h.authService)
+	auth.RegisterRoutes(mux, authMiddleware)
 
 	// chats e manipulação de salas
-	// // roomHandler := rooms.NewHandler(h.canalStore, h.usuarioCanalStore, h.eventoStore, os.Getenv("SERVER_NAME"), h.notifier)
-	// roomHandler.RegisterRoutes(mux, authMiddleware)
+	roomHandler := rooms.NewHandler(h.serverName, h.directoryService, h.roomAdmin, h.roomInteractions)
+	roomHandler.RegisterRoutes(mux, authMiddleware)
+
 	profileHandler := profile.NewHandler(h.profileService)
 	profileHandler.RegisterRoutes(mux, authMiddleware)
 

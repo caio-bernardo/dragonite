@@ -10,7 +10,7 @@ import (
 type Usuario struct {
 	ID          string
 	LocalPart   string
-	SenhaHash   string
+	SenhaHash   []byte
 	DataCriacao time.Time
 }
 

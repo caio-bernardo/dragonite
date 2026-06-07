@@ -76,6 +76,7 @@ func GenerateNextSinceToken(
 		ultimoEvento := eventos[len(eventos)-1]
 		nextToken.TimelinePosition = ultimoEvento.StreamOrdering
 	}
+	// TODO: implementar presence e receipts um dia ai
 	/*
 		if len(newPresence) > 0 {
 			nextToken.PresencePosition = newPresence[len(newPresence)-1].StreamOrdering

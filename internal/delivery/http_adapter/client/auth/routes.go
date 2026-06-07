@@ -3,28 +3,25 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
-	"github.com/caio-bernardo/dragonite/internal/domain/model"
-	"github.com/caio-bernardo/dragonite/internal/types"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
-	"github.com/caio-bernardo/dragonite/internal/util"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct {
-	userService *usecase.UsuarioService
+	authService *usecase.AuthService
 }
 
-func NewHandler(userService *usecase.UsuarioService) *Handler {
-	return &Handler{userService}
+func NewHandler(authService *usecase.AuthService) *Handler {
+	return &Handler{authService: authService}
 }
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middleware) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
 	mux.HandleFunc("GET /_matrix/client/v3/login", h.getLogin)
 	mux.HandleFunc("POST /_matrix/client/v3/login", h.postLogin)
 	mux.HandleFunc("POST /_matrix/client/v3/refresh", h.postRefresh)
@@ -43,134 +40,77 @@ func (h *Handler) getLogin(w http.ResponseWriter, r *http.Request) {
 
 // postLogin autentica o usuário retornando um device_id e access_token
 func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), util.RequestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), httputil.RequestTimeout)
 	defer cancel()
 
 	if r.Body == nil {
-		httputil.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_NOT_JSON, "Request body is empty"))
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Request body is empty")
 		return
 	}
 
 	var payload LoginRequest
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_BAD_JSON, err.Error()))
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
 		return
 	}
 
 	if payload.Type != "m.login.password" {
-		httputil.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_UNRECOGNIZED, "Unsupported/Unknown auth type"))
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_UNRECOGNIZED, "Unsupported/Unknown auth type")
 		return
 	}
 
-	var user *model.Usuario
-	if payload.Identifier.Type == types.IdentifierTypeUser {
-		user, err = h.userStore.GetByLocal(ctx, payload.Identifier.User)
-		if err != nil {
-			log.Println("[ERROR] POST /login. Failed to query user.", err)
-			httputil.WriteError(w, http.StatusForbidden, types.NewErrorResponse(types.M_FORBIDDEN, "Failed to authenticate to said user"))
+	success, err := h.authService.Login(ctx, usecase.LoginParams{
+		Indentifier: payload.Identifier,
+		Password:    payload.Password,
+		DeviceID:    payload.DeviceID,
+		DeviceName:  payload.InitialDeviceDisplayName,
+		DeviceIP:    httputil.GetClientIP(r),
+	})
+
+	if err != nil {
+		if errors.Is(err, types.ErrUnimplemented) {
+			httputil.WriteMatrixError(w, http.StatusNotImplemented, httputil.M_UNKNOWN, "this indentification method is unsupported right now")
+		} else if errors.Is(err, types.ErrInvalidCredentials) {
+			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_FORBIDDEN, "invalid credentials")
+		} else {
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
 		}
-	} else {
-		log.Printf("Unsupported/Unknown identifier type: %v", payload.Identifier.Type)
-		httputil.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_UNRECOGNIZED, "Unsupported/Unknown identifier type"))
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Senha), []byte(payload.Password)); err != nil {
-		httputil.WriteError(w, http.StatusForbidden, types.NewErrorResponse(types.M_FORBIDDEN, "Failed to authenticate to said user."))
-	}
-
-	// Cria o token de refresh
-	refreshToken, refreshExpires, err := GenerateRefreshToken()
-	if err != nil {
-		log.Printf("Failed to generate refresh token: %v", err)
-		httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate refresh token"))
-		return
-	}
-
-	// Cria ou atualiza o disposivo atual
-	deviceID := payload.DeviceID
-	if deviceID == "" {
-		newID, err := uuid.NewV7()
-		if err != nil {
-			log.Printf("Failed to generate device id: %v", err)
-			httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate device id"))
-			return
-		}
-		deviceID = newID.String()
-	}
-
-	device := model.Dispositivo{
-		ID:                    deviceID,
-		Nome:                  payload.InitialDeviceDisplayName,
-		UltimoIPVisto:         util.GetClientIP(r),
-		UltimoTimestampVisto:  time.Now(),
-		RefreshToken:          refreshToken,
-		RefreshTokenExpiresAt: refreshExpires,
-		UsuarioID:             user.ID,
-	}
-
-	err = h.deviceStore.CreateOrUpdate(ctx, &device)
-	if err != nil {
-		log.Printf("Failed to create or update device: %v", err)
-		httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to create or update device"))
-		return
-	}
-
-	// cria os tokens de acesso
-	accessToken, expiresMS, err := GenerateAccessToken(user.ID, device.ID)
-	if err != nil {
-		log.Printf("Failed to generate access token: %v", err)
-		httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate access token"))
 		return
 	}
 
 	response := LoginReponse{
-		AccessToken:  accessToken,
-		DeviceID:     device.ID,
-		UserID:       user.ID,
-		RefreshToken: device.RefreshToken,
-		ExpireMS:     &expiresMS,
+		AccessToken:  success.AccessToken,
+		DeviceID:     success.DeviceID,
+		UserID:       success.UserID,
+		RefreshToken: success.RefreshToken,
+		ExpireMS:     success.ExpireMS,
 	}
 	httputil.WriteJSON(w, 200, response)
 }
 
 // postRefresh "refresca" o access token do usuário.
 func (h *Handler) postRefresh(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), util.RequestTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
 	defer cancel()
 
 	var payload RefreshRequest
-	if err := util.ParseBody(r, &payload); err != nil {
-		var emsg types.ErrorResponse
-		if err == types.ErrBodyRequired {
-			emsg.ErrCode = types.M_NOT_JSON
+	if err := httputil.ParseBody(r, &payload); err != nil {
+		var emsg httputil.MatrixErrorResponse
+		if err == types.ErrNoBodyFound {
+			emsg.ErrCode = httputil.M_NOT_JSON
 			emsg.Message = "No request body"
 		} else {
-			emsg.ErrCode = types.M_BAD_JSON
+			emsg.ErrCode = httputil.M_BAD_JSON
 			emsg.Message = "Invalid request body"
 		}
-		util.WriteError(w, http.StatusBadRequest, emsg)
+		httputil.WriteError(w, http.StatusBadRequest, emsg)
 		return
 	}
 
-	device, err := h.deviceStore.GetByRefreshToken(ctx, payload.RefreshToken)
+	accessToken, expiresMS, err := h.authService.Refresh(ctx, payload.RefreshToken)
 	if err != nil {
-		log.Printf("Failed to get device by refresh token: %v", err)
-		util.WriteError(w, http.StatusUnauthorized, types.NewErrorResponse(types.M_UNAUTHORIZED, "Invalid refresh token"))
-		return
-	}
-
-	// If refresh token is expired, negates refresh
-	if device.RefreshTokenExpiresAt.Before(time.Now()) {
-		util.WriteError(w, http.StatusUnauthorized, types.NewErrorResponse(types.M_UNAUTHORIZED, "Refresh token expired"))
-		return
-	}
-
-	// creates new access token
-	accessToken, expiresMS, err := GenerateAccessToken(device.UsuarioID, device.ID)
-	if err != nil {
-		log.Printf("Failed to generate access token: %v", err)
-		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate access token"))
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNAUTHORIZED, "Refresh token is invalid")
 		return
 	}
 
@@ -178,7 +118,7 @@ func (h *Handler) postRefresh(w http.ResponseWriter, r *http.Request) {
 		AccessToken: accessToken,
 		ExpireMS:    &expiresMS,
 	}
-	util.WriteJSON(w, 200, response)
+	httputil.WriteJSON(w, 200, response)
 }
 
 // postLogout realiza o logout, invalidando o refresh token.
@@ -186,27 +126,21 @@ func (h *Handler) postLogout(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	userID := ctx.Value(types.UserIDKey).(string)
 	deviceID := ctx.Value(types.DeviceIDKey).(string) // NOTE: considera que o middleware de autenticação injetou esses valores a partir do access token
 	if deviceID == "" {
-		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Missing device_id in context."))
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Missing device_id in context.")
 		return
 	}
 
-	device, err := h.deviceStore.GetByID(ctx, deviceID)
+	err := h.authService.Logout(ctx, userID, deviceID)
 	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Operation over device failed."))
+		log.Printf("Failed to logout: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to logout")
 		return
 	}
 
-	// invalida o token
-	device.RefreshTokenExpiresAt = time.Now()
-	if err := h.deviceStore.Update(ctx, device); err != nil {
-		log.Printf("Failed to update device: %v", err)
-		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Operation over device failed."))
-		return
-	}
-
-	util.WriteJSON(w, 200, map[string]any{})
+	httputil.WriteJSON(w, 200, map[string]any{})
 }
 
 // postRegister realiza o registro de novos usuários
@@ -215,75 +149,54 @@ func (h *Handler) postRegister(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var req RegisterRequest
-	if err := util.ParseBody(r, &req); err != nil {
-		util.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_BAD_JSON, "Invalid request body"))
+	if err := httputil.ParseBody(r, &req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Invalid request body")
 		return
 	}
 
-	props := model.UsuarioCreate{
-		LocalPart: req.Username,
-		Senha:     req.Password,
-	}
-	user, err := props.ToUsuario()
+	userID, err := h.authService.Register(ctx, usecase.RegisterParams{
+		Username: req.Username,
+		Senha:    req.Password,
+	})
 	if err != nil {
-		if err == types.ErrInvalidUsername {
-			httputil.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_INVALID_USERNAME, "Invalid username"))
+		if err == types.ErrAlreadyInUse {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_USER_IN_USE, "Username already exists")
 		} else {
-			log.Printf("failed to parse user: %v", err)
-			httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Parsing failed."))
-		}
-		return
-	}
-	// Cria novo usuario
-	err = h.userStore.Create(ctx, &user)
-	if err != nil {
-		// Falha se o nome já existir
-		if err == types.ErrLocalpartInUse {
-			httputil.WriteError(w, http.StatusBadRequest, types.NewErrorResponse(types.M_USER_IN_USE, "Username already exists"))
-		} else {
-			log.Printf("failed to create user: %v", err)
-			httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Operation failed."))
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to register")
 		}
 		return
 	}
 
 	response := RegisterResponse{
-		UserID: user.ID,
+		UserID: userID,
 	}
 	// Se devemos logar o usuario
 	if !req.InhibitLogin {
-		refreshToken, refreshExpires, err := GenerateRefreshToken()
+		success, err := h.authService.Login(ctx, usecase.LoginParams{
+			Indentifier: types.UserIndentifier{
+				Type: types.IdentifierTypeUser,
+				User: userID,
+			},
+			Password: req.Password,
+		})
+
 		if err != nil {
-			log.Printf("Failed to generate refresh token: %v", err)
-			util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate refresh token"))
+			if errors.Is(err, types.ErrUnimplemented) {
+				httputil.WriteMatrixError(w, http.StatusNotImplemented, httputil.M_UNKNOWN, "this indentification method is unsupported right now")
+			} else if errors.Is(err, types.ErrInvalidCredentials) {
+				httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_FORBIDDEN, "invalid credentials")
+			} else {
+				httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+			}
 			return
 		}
 
-		// create new Dispositivo
-		device := model.Dispositivo{
-			ID:                    req.DeviceID,
-			Nome:                  req.InitialDeviceDisplayName,
-			UltimoIPVisto:         httputil.GetClientIP(r),
-			UltimoTimestampVisto:  time.Now(),
-			RefreshToken:          refreshToken,
-			RefreshTokenExpiresAt: refreshExpires,
-		}
-
-		// criar novo access_token
-		accessToken, expiresMS, err := GenerateAccessToken(user.LocalPart, device.ID)
-		if err != nil {
-			log.Printf("Failed to generate access token: %v", err)
-			httputil.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_UNKNOWN, "Failed to generate access token"))
-			return
-		}
-
-		// Inclui autenticacao
 		response = RegisterResponse{
-			UserID:       response.UserID,
-			DeviceID:     device.ID,
-			AccessToken:  accessToken,
-			ExpireMS:     &expiresMS,
-			RefreshToken: refreshToken,
+			AccessToken:  success.AccessToken,
+			DeviceID:     success.DeviceID,
+			UserID:       success.UserID,
+			RefreshToken: success.RefreshToken,
+			ExpireMS:     success.ExpireMS,
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, response)

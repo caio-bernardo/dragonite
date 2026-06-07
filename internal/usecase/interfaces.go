@@ -14,6 +14,8 @@ type SearchFilter struct {
 }
 
 type UsuarioStorage interface {
+	CreateUsuarioAndProfile(ctx context.Context, userProps domain.Usuario) (*domain.Usuario, error)
+	GetUsuarioByID(ctx context.Context, userID string) (*domain.Usuario, error)
 	GetProfileByID(ctx context.Context, userID string) (*domain.Profile, error)
 	UpdateProfile(ctx context.Context, profile domain.Profile) error
 	SearchProfiles(ctx context.Context, filter SearchFilter) ([]domain.Profile, error)
@@ -41,6 +43,13 @@ type EventoStorage interface {
 	SaveEvent(ctx context.Context, event *domain.Evento) error
 }
 
+type DeviceStorage interface {
+	GetDeviceByID(ctx context.Context, deviceID string) (*domain.Dispositivo, error)
+	GetDispositivoByRefreshToken(ctx context.Context, refreshToken string) (*domain.Dispositivo, error)
+	UpsertDispositivo(ctx context.Context, device *domain.Dispositivo) error
+	UpdateDevice(ctx context.Context, device *domain.Dispositivo) error
+}
+
 type Notifier interface {
 	WaitForEvents(ctx context.Context, userID string) error
 }
@@ -51,7 +60,6 @@ type EventBus interface {
 	PublishToUser(ctx context.Context, userID string, event domain.Evento)
 	Subscribe(ctx context.Context, canal_id string) (<-chan *domain.Evento, func())
 }
-
 type DirectoryStorage interface {
 	SearchDirectory(ctx context.Context, term string, limit, offset int) ([]domain.PublicRoomEntry, int, error)
 }

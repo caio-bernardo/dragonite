@@ -1,6 +1,6 @@
 package auth
 
-import "github.com/caio-bernardo/dragonite/internal/types"
+import "github.com/caio-bernardo/dragonite/internal/domain/types"
 
 // LoginFlowsReponse represents reponse body for GET /login, showing supported authenticatin methods
 type LoginFlowsReponse struct {
@@ -55,13 +55,20 @@ const (
 
 // RegisterRequest represents the request body for the POST /register
 type RegisterRequest struct {
-	Auth                     types.AuthenticationData `json:"auth,omitempty"`
-	DeviceID                 string                   `json:"device_id,omitempty"`
-	InhibitLogin             bool                     `json:"inhibit_login,omitempty"`
-	InitialDeviceDisplayName string                   `json:"initial_device_display_name,omitempty"`
-	Password                 string                   `json:"password,omitempty"`
-	RefreshToken             bool                     `json:"refresh_token,omitempty"`
-	Username                 string                   `json:"username,omitempty"`
+	Auth                     AuthenticationData `json:"auth,omitempty"`
+	DeviceID                 string             `json:"device_id,omitempty"`
+	InhibitLogin             bool               `json:"inhibit_login,omitempty"`
+	InitialDeviceDisplayName string             `json:"initial_device_display_name,omitempty"`
+	Password                 string             `json:"password,omitempty"`
+	RefreshToken             bool               `json:"refresh_token,omitempty"`
+	Username                 string             `json:"username,omitempty"`
+}
+
+// AuthenticationData holds the session and type of authentication
+type AuthenticationData struct {
+	Session string `json:"session"`
+	Type    string `json:"type"`
+	any
 }
 
 // RegisterResponse represents the response body for the POST /register

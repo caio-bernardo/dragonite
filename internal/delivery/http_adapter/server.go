@@ -1,42 +1,56 @@
 package http_adapter
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
 // AppServer representa o servidor em nível de aplicação
 type Server struct {
-	port           int
-	jwtSecret      string
-	usuarioService usecase.UsuarioService
-	systemService  usecase.HealthService
-	dirService     usecase.DirectoryService
-	profileService usecase.ProfileService
-	syncService    usecase.SyncService
+	jwtSecret               string
+	port                    int
+	serverName              string
+	authService             *usecase.AuthService
+	dirService              *usecase.DirectoryService
+	profileService          *usecase.ProfileService
+	roomAdminService        *usecase.RoomAdminService
+	roomInteractionsService *usecase.RoomInteractionService
+	syncService             *usecase.SyncService
+	systemService           *usecase.HealthService
+	usuarioService          *usecase.UsuarioService
 }
 
 // Cria um novo servidor http
 func NewServer(port int,
 	jwtSecret string,
-	usuarioService usecase.UsuarioService,
-	systemService usecase.HealthService,
-	dirService usecase.DirectoryService,
-	profileService usecase.ProfileService,
-	syncService usecase.SyncService,
+	serverName string,
+	authService *usecase.AuthService,
+	dirService *usecase.DirectoryService,
+	profileService *usecase.ProfileService,
+	roomAdminService *usecase.RoomAdminService,
+	roomInteractionsService *usecase.RoomInteractionService,
+	syncService *usecase.SyncService,
+	systemService *usecase.HealthService,
+	usuarioService *usecase.UsuarioService,
 ) *http.Server {
 
 	NewServer := &Server{
-		port:           port,
-		jwtSecret:      jwtSecret,
-		usuarioService: usuarioService,
-		systemService:  systemService,
-		dirService:     dirService,
-		profileService: profileService,
-		syncService:    syncService,
+		authService:             authService,
+		dirService:              dirService,
+		jwtSecret:               jwtSecret,
+		port:                    port,
+		profileService:          profileService,
+		roomAdminService:        roomAdminService,
+		roomInteractionsService: roomInteractionsService,
+		syncService:             syncService,
+		systemService:           systemService,
+		usuarioService:          usuarioService,
 	}
 
 	// servidor http, com endpoints registrados e timeout para operações R/W
@@ -49,4 +63,59 @@ func NewServer(port int,
 	}
 
 	return &server
+}
+
+// Registra os endpoints do servidor
+func (s *Server) RegisterRoutes() http.Handler {
+	mux := http.NewServeMux()
+
+	clientHandler := client.NewHandler(
+		s.serverName,
+		s.authService,
+		s.usuarioService,
+		s.dirService,
+		s.profileService,
+		s.syncService,
+		s.roomAdminService,
+		s.roomInteractionsService,
+	)
+	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
+
+	// federationHandler := federation.NewHandler()
+	// federationHandler.RegisterRoutes(mux)
+
+	// Registra rotas
+	mux.HandleFunc("GET /health", s.healthHandler)
+
+	// wildcard
+	mux.HandleFunc("GET /", s.HelloWorldHandler)
+
+	// Adiciona middlewares
+	// NOTE: a ordem dos middleware importa! O mais interno é chamado primeiro.
+	return s.logMiddleware(s.corsMiddleware(mux))
+}
+
+func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]string{"message": "Hello World"}
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "Failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(jsonResp); err != nil {
+		log.Printf("Failed to write response: %v", err)
+	}
+}
+
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	resp, err := json.Marshal(s.systemService.PingDB())
+	if err != nil {
+		http.Error(w, "Failed to marshal health check response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(resp); err != nil {
+		log.Printf("Failed to write response: %v", err)
+	}
 }

@@ -9,10 +9,10 @@ import (
 )
 
 type Handler struct {
-	profileService usecase.ProfileService
+	profileService *usecase.ProfileService
 }
 
-func NewHandler(profileService usecase.ProfileService) *Handler {
+func NewHandler(profileService *usecase.ProfileService) *Handler {
 	return &Handler{profileService: profileService}
 }
 
