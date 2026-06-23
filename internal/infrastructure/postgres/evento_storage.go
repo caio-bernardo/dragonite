@@ -83,3 +83,62 @@ func (s *PostgresStorage) CheckEventoExists(ctx context.Context, eventID string)
 	}
 	return exists, nil
 }
+
+func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, limit int, events []string) ([]domain.Evento, error) {
+	query := `
+	    WITH RECURSIVE dag_backfill AS (
+			SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key, prev_eventos, auth_eventos, depth, 1 AS distance
+			FROM Evento
+			WHERE id_canal = $1 AND id_evento = ANY($2)
+
+			UNION
+
+			SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key, e.prev_eventos, e.auth_eventos, e.depth, db.distance + 1
+			FROM Evento e
+			JOIN dag_backfill db ON e.id_evento = ANY(db.prev_eventos)
+			WHERE db.distance < $3
+		)
+		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key
+		FROM Evento
+		ORDER BY depth DESC, distance ASC
+		LIMIT $3;
+	`
+	rows, err := s.db.Query(ctx, query, roomID, pq.Array(events), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &event.StreamOrdering, &stateKey, &event.PrevEventos, &event.AuthEventos, &event.Depth)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+
+	return eventos, nil
+}
+
+func (s *PostgresStorage) GetEvento(ctx context.Context, eventID string) (*domain.Evento, error) {
+	row := s.db.QueryRow(ctx,
+		`SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, prev_eventos, auth_eventos, depth FROM Evento WHERE id_evento = $1`,
+		eventID,
+	)
+	var event domain.Evento
+	var stateKey sql.NullString
+	err := row.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &stateKey, &event.PrevEventos, &event.AuthEventos, &event.Depth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan event: %w", err)
+	}
+	if stateKey.Valid {
+		event.StateKey = &stateKey.String
+	}
+	return &event, nil
+}

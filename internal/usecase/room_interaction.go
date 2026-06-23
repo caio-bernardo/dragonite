@@ -213,3 +213,19 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 
 	return eventID, nil
 }
+
+func (s *RoomInteractionService) RetrieveSingleEvent(ctx context.Context, eventID string) (*domain.Evento, error) {
+	evento, err := s.eventoRepo.GetEvento(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return evento, nil
+}
+
+func (s *RoomInteractionService) BackfillRoomEvents(ctx context.Context, roomID string, limit int, eventIDs []string) ([]domain.Evento, error) {
+	eventos, err := s.eventoRepo.GetEventsSince(ctx, roomID, limit, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	return eventos, nil
+}

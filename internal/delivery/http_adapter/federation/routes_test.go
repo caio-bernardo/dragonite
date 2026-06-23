@@ -23,7 +23,7 @@ func (s *fakeSystemStorage) PingDB() map[string]string {
 func TestFederationGetVersion(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil)
+	h := NewHandler(sys, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/federation/v1/version", nil)
@@ -46,7 +46,7 @@ func TestFederationGetVersion(t *testing.T) {
 func TestFederationGetServerKeySignature(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil)
+	h := NewHandler(sys, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/key/v2/server", nil)

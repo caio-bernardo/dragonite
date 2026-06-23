@@ -27,3 +27,15 @@ type TransactionRequest struct {
 	OriginServerTS string          `json:"origin_server_ts"`
 	PDUs           []domain.Evento `json:"pdus"`
 }
+
+// Response format is the same as request
+type TransactionResponse struct {
+	Origin         string          `json:"origin"`
+	OriginServerTS int64           `json:"origin_server_ts"`
+	PDUs           []domain.Evento `json:"pdus"`
+}
+
+type StateResponse struct {
+	AuthChain []domain.Evento `json:"auth_chain"`
+	PDUs      []domain.Evento `json:"pdus"`
+}

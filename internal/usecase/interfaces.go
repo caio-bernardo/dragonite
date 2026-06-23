@@ -49,6 +49,8 @@ type EventoStorage interface {
 	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
 	GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error)
 	SaveEvento(ctx context.Context, event *domain.Evento) error
+	GetEvento(ctx context.Context, eventID string) (*domain.Evento, error)
+	GetEventsSince(ctx context.Context, roomID string, limit int, eventIDs []string) ([]domain.Evento, error)
 	CheckEventoExists(ctx context.Context, eventID string) (bool, error)
 }
 
