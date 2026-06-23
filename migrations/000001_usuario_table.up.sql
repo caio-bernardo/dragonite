@@ -6,12 +6,11 @@ CREATE TABLE IF NOT EXISTS Usuario (
     id_usuario VARCHAR(512) PRIMARY KEY,
     localpart USUARIO_LOCALPART_T UNIQUE NOT NULL,
     senha_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-
 CREATE TABLE IF NOT EXISTS Profile (
-    fk_usuario_id VARCHAR(512) FOREIGN KEY REFERENCES Usuario(id_usuario),
+    fk_usuario_id VARCHAR(512) REFERENCES Usuario(id_usuario),
     nome VARCHAR(255) NOT NULL,
     foto_url VARCHAR(255),
     PRIMARY KEY (fk_usuario_id)
@@ -21,7 +20,7 @@ CREATE TABLE IF NOT EXISTS AccountData (
     fk_id_usuario VARCHAR(512) NOT NULL REFERENCES Usuario(id_usuario) ON DELETE CASCADE,
     id_canal VARCHAR(255) DEFAULT '',
     tipo VARCHAR(255) NOT NULL,
-    content JSONB NOT NULL
+    content JSONB NOT NULL,
     PRIMARY KEY (fk_id_usuario, id_canal, tipo)
 );
 

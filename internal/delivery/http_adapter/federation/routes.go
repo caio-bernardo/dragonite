@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
@@ -18,19 +19,22 @@ type Handler struct {
 	sysService             *usecase.SystemService
 	fedService             *usecase.FederationService
 	roomInteractionService *usecase.RoomInteractionService
+	profileService         *usecase.ProfileService
 }
 
-func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService) *Handler {
+func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService) *Handler {
 	return &Handler{
 		sysService:             sysService,
 		fedService:             fedService,
 		roomInteractionService: roomInteractionService,
+		profileService:         profileService,
 	}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /_matrix/federation/v1/version", h.getVersion)
 	mux.HandleFunc("GET /_matrix/key/v2/server", h.getServerKey)
+	mux.HandleFunc("GET /_matrix/federation/v1/query/profile", h.getProfile)
 
 	// TODO: include authentication for all this endpoints
 	// receive transactions
@@ -78,6 +82,45 @@ func (h *Handler) getServerKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
+    userID := r.URL.Query().Get("user_id")
+    if userID == "" {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "user_id is required")
+        return
+    }
+
+    // Homeservers devem responder apenas por usuários locais.
+    // O server name fica após o ":" no Matrix user ID (@localpart:server_name).
+    parts := strings.SplitN(userID, ":", 2)
+    if len(parts) != 2 || parts[1] != h.sysService.GetServerName() {
+        httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "User does not exist.")
+        return
+    }
+
+    field := r.URL.Query().Get("field")
+    if field != "" && field != "displayname" && field != "avatar_url" {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "field must be 'displayname' or 'avatar_url'")
+        return
+    }
+
+    profile, err := h.profileService.GetProfileByUserID(r.Context(), userID)
+    if err != nil {
+        httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "User does not exist.")
+        return
+    }
+
+    // Se um field específico foi pedido, zeramos o outro.
+    // Os ponteiros com omitempty garantem que campos nil não aparecem no JSON.
+    switch field {
+    case "displayname":
+        profile.AvatarURL = nil
+    case "avatar_url":
+        profile.DisplayName = nil
+    }
+
+    httputil.WriteJSON(w, http.StatusOK, profile)
 }
 
 func (h *Handler) putSendTxn(w http.ResponseWriter, r *http.Request) {
