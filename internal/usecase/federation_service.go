@@ -334,101 +334,134 @@ func (f *FederationService) fetchMissingEvents(ctx context.Context, originServer
 var ErrIncompatibleRoomVersion = errors.New("incompatible room version")
 
 type MakeJoinResult struct {
-    RoomVersion string
-    Sender      string
-    RoomID      string
-    Origin      string
-    Timestamp   int64
+	RoomVersion string
+	Sender      string
+	RoomID      string
+	Origin      string
+	Timestamp   int64
 }
 
 func (f *FederationService) MakeJoin(ctx context.Context, roomID, userID string, supportedVersions []string) (*MakeJoinResult, error) {
-    canal, err := f.canalStore.GetByID(ctx, roomID)
-    if err != nil {
-        return nil, fmt.Errorf("failed to look up room: %w", err)
-    }
-    if canal == nil {
-        return nil, types.ErrNotFound
-    }
+	canal, err := f.canalStore.GetByID(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up room: %w", err)
+	}
+	if canal == nil {
+		return nil, types.ErrNotFound
+	}
 
-    // Verifica compatibilidade de versão
-    versionOK := false
-    for _, v := range supportedVersions {
-        if v == canal.Versao {
-            versionOK = true
-            break
-        }
-    }
-    if !versionOK {
-        return nil, ErrIncompatibleRoomVersion
-    }
+	// Verifica compatibilidade de versão
+	versionOK := false
+	for _, v := range supportedVersions {
+		if v == canal.Versao {
+			versionOK = true
+			break
+		}
+	}
+	if !versionOK {
+		return nil, ErrIncompatibleRoomVersion
+	}
 
-    // Verifica se a sala permite entrada pública
-    joinRule, err := f.canalStore.GetJoinRule(ctx, roomID)
-    if err != nil {
-        return nil, fmt.Errorf("failed to get join rule: %w", err)
-    }
-    if joinRule != "public" {
-        return nil, types.ErrForbidden
-    }
+	// Verifica se a sala permite entrada pública
+	joinRule, err := f.canalStore.GetJoinRule(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get join rule: %w", err)
+	}
+	if joinRule != "public" {
+		return nil, types.ErrForbidden
+	}
 
-    return &MakeJoinResult{
-        RoomVersion: canal.Versao,
-        Sender:      userID,
-        RoomID:      roomID,
-        Origin:      f.serverName,
-        Timestamp:   time.Now().UnixMilli(),
-    }, nil
+	return &MakeJoinResult{
+		RoomVersion: canal.Versao,
+		Sender:      userID,
+		RoomID:      roomID,
+		Origin:      f.serverName,
+		Timestamp:   time.Now().UnixMilli(),
+	}, nil
 }
 
 type SendJoinResult struct {
-    StateEvents   []domain.Evento
-    ServersInRoom []string
+	StateEvents   []domain.Evento
+	ServersInRoom []string
 }
 
 func (f *FederationService) ProcessSendJoin(ctx context.Context, roomID string, joinEvent *domain.Evento) (*SendJoinResult, error) {
-    // Verifica se a sala existe
-    canal, err := f.canalStore.GetByID(ctx, roomID)
-    if err != nil {
-        return nil, fmt.Errorf("failed to check room: %w", err)
-    }
-    if canal == nil {
-        return nil, types.ErrNotFound
-    }
+	// Verifica se a sala existe
+	canal, err := f.canalStore.GetByID(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check room: %w", err)
+	}
+	if canal == nil {
+		return nil, types.ErrNotFound
+	}
 
-    // Persiste o evento de join e atualiza o estado
-    err = f.uow.Execute(ctx, func(txCtx context.Context) error {
-        if err := f.eventoStore.SaveEvento(txCtx, joinEvent); err != nil {
-            return fmt.Errorf("failed to save join event: %w", err)
-        }
-        if err := f.canalStore.UpsertCurrentState(txCtx, roomID, "m.room.member", joinEvent.Sender, joinEvent.ID); err != nil {
-            return fmt.Errorf("failed to upsert current state: %w", err)
-        }
-        if err := f.canalStore.UpsertMembership(txCtx, roomID, joinEvent.Sender, "join"); err != nil {
-            return fmt.Errorf("failed to upsert membership: %w", err)
-        }
-        return nil
-    })
-    if err != nil {
-        return nil, err
-    }
+	// Persiste o evento de join e atualiza o estado
+	err = f.uow.Execute(ctx, func(txCtx context.Context) error {
+		if err := f.eventoStore.SaveEvento(txCtx, joinEvent); err != nil {
+			return fmt.Errorf("failed to save join event: %w", err)
+		}
+		if err := f.canalStore.UpsertCurrentState(txCtx, roomID, "m.room.member", joinEvent.Sender, joinEvent.ID); err != nil {
+			return fmt.Errorf("failed to upsert current state: %w", err)
+		}
+		if err := f.canalStore.UpsertMembership(txCtx, roomID, joinEvent.Sender, "join"); err != nil {
+			return fmt.Errorf("failed to upsert membership: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
-    // Busca o estado atual da sala para a resposta
-    stateEvents, err := f.eventoStore.GetCurrentStateEvents(ctx, roomID)
-    if err != nil {
-        return nil, fmt.Errorf("failed to get current state: %w", err)
-    }
-    if stateEvents == nil {
-        stateEvents = []domain.Evento{}
-    }
+	// Busca o estado atual da sala para a resposta
+	stateEvents, err := f.eventoStore.GetCurrentStateEvents(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current state: %w", err)
+	}
+	if stateEvents == nil {
+		stateEvents = []domain.Evento{}
+	}
 
-    // Servidores ativos na sala
-    servers, err := f.canalStore.GetCanalParticipatingServers(ctx, roomID)
-    if err != nil {
-        servers = []string{}
-    }
+	// Servidores ativos na sala
+	servers, err := f.canalStore.GetCanalParticipatingServers(ctx, roomID)
+	if err != nil {
+		servers = []string{}
+	}
 
-    return &SendJoinResult{
-        StateEvents:   stateEvents,
-        ServersInRoom: servers,
-    }, nil
+	return &SendJoinResult{
+		StateEvents:   stateEvents,
+		ServersInRoom: servers,
+	}, nil
+}
+
+func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, inviteEvent *domain.Evento) error {
+	err := f.uow.Execute(ctx, func(txCtx context.Context) error {
+		// checa se o canal existe
+		canal, err := f.canalStore.GetByID(txCtx, roomID)
+		if err != nil && !errors.Is(err, types.ErrNotFound) {
+			return fmt.Errorf("Could not check the room: %w", err)
+		}
+
+		if canal == nil {
+			_, err := f.canalStore.Create(txCtx, roomID, inviteEvent.Sender)
+			if err != nil {
+				return fmt.Errorf("could not create room: %w", err)
+			}
+		}
+
+		if err := f.eventoStore.SaveEvento(txCtx, inviteEvent); err != nil {
+			return fmt.Errorf("failed to save invite event: %w", err)
+		}
+
+		if inviteEvent.StateKey != nil {
+			if err := f.canalStore.UpsertCurrentState(txCtx, roomID, "m.room.member", *inviteEvent.StateKey, inviteEvent.ID); err != nil {
+				return fmt.Errorf("failed to upsert current state: %w", err)
+			}
+
+			if err := f.canalStore.UpsertMembership(txCtx, roomID, inviteEvent.Sender, "join"); err != nil {
+				return fmt.Errorf("failed to upsert membership: %w", err)
+			}
+		}
+		return nil
+	})
+	return err
 }

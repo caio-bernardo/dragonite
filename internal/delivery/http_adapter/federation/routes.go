@@ -1,16 +1,18 @@
 package federation
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-	"errors"
-	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -47,6 +49,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /_matrix/key/v2/server", h.getServerKey)
 	mux.HandleFunc("GET /_matrix/federation/v1/query/profile", h.getProfile)
 
+	mux.HandleFunc("PUT /_matrix/federation/v2/invite/{roomId}/{eventId}", h.putInvite)
+
 	// TODO: include authentication for all this endpoints
 	// receive transactions
 	mux.HandleFunc("PUT /_matrix/federation/v1/send/{txnId}", h.putSendTxn)
@@ -56,12 +60,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /_matrix/federation/v1/event/{eventId}", h.getEvent)
 
 	mux.HandleFunc("GET /_matrix/federation/v1/publicRooms", h.getPublicRooms)
-    mux.HandleFunc("POST /_matrix/federation/v1/publicRooms", h.postPublicRooms)
+	mux.HandleFunc("POST /_matrix/federation/v1/publicRooms", h.postPublicRooms)
 
 	mux.HandleFunc("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
 	mux.HandleFunc("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
 }
-
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
 	res := VersionResponse{}
@@ -103,42 +106,42 @@ func (h *Handler) getServerKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
-    userID := r.URL.Query().Get("user_id")
-    if userID == "" {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "user_id is required")
-        return
-    }
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "user_id is required")
+		return
+	}
 
-    // Homeservers devem responder apenas por usuários locais.
-    // O server name fica após o ":" no Matrix user ID (@localpart:server_name).
-    parts := strings.SplitN(userID, ":", 2)
-    if len(parts) != 2 || parts[1] != h.sysService.GetServerName() {
-        httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "User does not exist.")
-        return
-    }
+	// Homeservers devem responder apenas por usuários locais.
+	// O server name fica após o ":" no Matrix user ID (@localpart:server_name).
+	parts := strings.SplitN(userID, ":", 2)
+	if len(parts) != 2 || parts[1] != h.sysService.GetServerName() {
+		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "User does not exist.")
+		return
+	}
 
-    field := r.URL.Query().Get("field")
-    if field != "" && field != "displayname" && field != "avatar_url" {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "field must be 'displayname' or 'avatar_url'")
-        return
-    }
+	field := r.URL.Query().Get("field")
+	if field != "" && field != "displayname" && field != "avatar_url" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "field must be 'displayname' or 'avatar_url'")
+		return
+	}
 
-    profile, err := h.profileService.GetProfileByUserID(r.Context(), userID)
-    if err != nil {
-        httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "User does not exist.")
-        return
-    }
+	profile, err := h.profileService.GetProfileByUserID(r.Context(), userID)
+	if err != nil {
+		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "User does not exist.")
+		return
+	}
 
-    // Se um field específico foi pedido, zeramos o outro.
-    // Os ponteiros com omitempty garantem que campos nil não aparecem no JSON.
-    switch field {
-    case "displayname":
-        profile.AvatarURL = nil
-    case "avatar_url":
-        profile.DisplayName = nil
-    }
+	// Se um field específico foi pedido, zeramos o outro.
+	// Os ponteiros com omitempty garantem que campos nil não aparecem no JSON.
+	switch field {
+	case "displayname":
+		profile.AvatarURL = nil
+	case "avatar_url":
+		profile.DisplayName = nil
+	}
 
-    httputil.WriteJSON(w, http.StatusOK, profile)
+	httputil.WriteJSON(w, http.StatusOK, profile)
 }
 
 func (h *Handler) putSendTxn(w http.ResponseWriter, r *http.Request) {
@@ -254,207 +257,378 @@ func (h *Handler) getBackfill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
-    q := r.URL.Query()
+	q := r.URL.Query()
 
-    limit := 0
-    if s := q.Get("limit"); s != "" {
-        if v, err := strconv.Atoi(s); err == nil && v > 0 {
-            limit = v
-        }
-    }
+	limit := 0
+	if s := q.Get("limit"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			limit = v
+		}
+	}
 
-    offset := 0
-    if since := q.Get("since"); since != "" {
-        if v, err := strconv.Atoi(since); err == nil && v > 0 {
-            offset = v
-        }
-    }
+	offset := 0
+	if since := q.Get("since"); since != "" {
+		if v, err := strconv.Atoi(since); err == nil && v > 0 {
+			offset = v
+		}
+	}
 
-    h.writePublicRooms(w, r, "", limit, offset)
+	h.writePublicRooms(w, r, "", limit, offset)
 }
 
 func (h *Handler) postPublicRooms(w http.ResponseWriter, r *http.Request) {
-    var req PublicRoomsRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
-        return
-    }
+	var req PublicRoomsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+		return
+	}
 
-    searchTerm := ""
-    if req.Filter != nil {
-        searchTerm = req.Filter.GenericSearchTerm
-    }
+	searchTerm := ""
+	if req.Filter != nil {
+		searchTerm = req.Filter.GenericSearchTerm
+	}
 
-    offset := 0
-    if req.Since != "" {
-        if v, err := strconv.Atoi(req.Since); err == nil && v > 0 {
-            offset = v
-        }
-    }
+	offset := 0
+	if req.Since != "" {
+		if v, err := strconv.Atoi(req.Since); err == nil && v > 0 {
+			offset = v
+		}
+	}
 
-    h.writePublicRooms(w, r, searchTerm, req.Limit, offset)
+	h.writePublicRooms(w, r, searchTerm, req.Limit, offset)
 }
 
 // writePublicRooms contém a lógica compartilhada entre GET e POST
 func (h *Handler) writePublicRooms(w http.ResponseWriter, r *http.Request, searchTerm string, limit, offset int) {
-    ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-    result, err := h.dirService.ListPublic(ctx, searchTerm, limit, offset)
-    if err != nil {
-        httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
-        return
-    }
+	result, err := h.dirService.ListPublic(ctx, searchTerm, limit, offset)
+	if err != nil {
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+		return
+	}
 
-    httputil.WriteJSON(w, http.StatusOK, result)
+	httputil.WriteJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) makeJoin(w http.ResponseWriter, r *http.Request) {
-    roomID := r.PathValue("roomId")
-    userID := r.PathValue("userId")
+	roomID := r.PathValue("roomId")
+	userID := r.PathValue("userId")
 
-    supportedVersions := r.URL.Query()["ver"]
-    if len(supportedVersions) == 0 {
-        supportedVersions = []string{"1"}
-    }
+	supportedVersions := r.URL.Query()["ver"]
+	if len(supportedVersions) == 0 {
+		supportedVersions = []string{"1"}
+	}
 
-    result, err := h.fedService.MakeJoin(r.Context(), roomID, userID, supportedVersions)
-    if err != nil {
-        if errors.Is(err, types.ErrNotFound) {
-            httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Unknown room")
-            return
-        }
-        if errors.Is(err, usecase.ErrIncompatibleRoomVersion) {
-            httputil.WriteMatrixError(w, http.StatusBadRequest, "M_INCOMPATIBLE_ROOM_VERSION",
-                "Your homeserver does not support the features required to join this room")
-            return
-        }
-        if errors.Is(err, types.ErrForbidden) {
-            httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not invited to this room")
-            return
-        }
-        httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
-        return
-    }
+	result, err := h.fedService.MakeJoin(r.Context(), roomID, userID, supportedVersions)
+	if err != nil {
+		if errors.Is(err, types.ErrNotFound) {
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Unknown room")
+			return
+		}
+		if errors.Is(err, usecase.ErrIncompatibleRoomVersion) {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, "M_INCOMPATIBLE_ROOM_VERSION",
+				"Your homeserver does not support the features required to join this room")
+			return
+		}
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not invited to this room")
+			return
+		}
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+		return
+	}
 
-    resp := MakeJoinResponse{
-        RoomVersion: result.RoomVersion,
-        Event: EventTemplate{
-            Type:           "m.room.member",
-            Sender:         result.Sender,
-            StateKey:       result.Sender,
-            RoomID:         result.RoomID,
-            Origin:         result.Origin,
-            OriginServerTS: result.Timestamp,
-            Content:        MembershipContent{Membership: "join"},
-        },
-    }
+	resp := MakeJoinResponse{
+		RoomVersion: result.RoomVersion,
+		Event: EventTemplate{
+			Type:           "m.room.member",
+			Sender:         result.Sender,
+			StateKey:       result.Sender,
+			RoomID:         result.RoomID,
+			Origin:         result.Origin,
+			OriginServerTS: result.Timestamp,
+			Content:        MembershipContent{Membership: "join"},
+		},
+	}
 
-    httputil.WriteJSON(w, http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) sendJoin(w http.ResponseWriter, r *http.Request) {
-    roomID := r.PathValue("roomId")
+	roomID := r.PathValue("roomId")
 
-    var req SendJoinRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
-        return
-    }
+	var req SendJoinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+		return
+	}
 
-    // Validações obrigatórias pela spec
-    if req.Type != "m.room.member" {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "event type must be m.room.member")
-        return
-    }
-    if req.Content.Membership != "join" {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "membership must be join")
-        return
-    }
-    if req.Sender != req.StateKey {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "sender must equal state_key")
-        return
-    }
-    senderParts := strings.SplitN(req.Sender, ":", 2)
-    if len(senderParts) != 2 || senderParts[1] != req.Origin {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "sender must belong to the origin server")
-        return
-    }
+	// Validações obrigatórias pela spec
+	if req.Type != "m.room.member" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "event type must be m.room.member")
+		return
+	}
+	if req.Content.Membership != "join" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "membership must be join")
+		return
+	}
+	if req.Sender != req.StateKey {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "sender must equal state_key")
+		return
+	}
+	senderParts := strings.SplitN(req.Sender, ":", 2)
+	if len(senderParts) != 2 || senderParts[1] != req.Origin {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "sender must belong to the origin server")
+		return
+	}
 
-    // Verifica a assinatura ed25519
-    if err := h.verifyEventSignature(req); err != nil {
-        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invalid event signature: "+err.Error())
-        return
-    }
+	// Verifica a assinatura ed25519
+	if err := h.verifyEventSignature(req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invalid event signature: "+err.Error())
+		return
+	}
 
-    // Constrói o evento interno a partir do request
-    stateKey := req.Sender
-    contentBytes, _ := json.Marshal(req.Content)
-    joinEvent := &domain.Evento{
-        ID:               req.EventID,
-        Tipo:             req.Type,
-        CanalID:          roomID,
-        Sender:           req.Sender,
-        StateKey:         &stateKey,
-        Content:          json.RawMessage(contentBytes),
-        OrigemServidorTS: req.OriginServerTS,
-    }
+	// Constrói o evento interno a partir do request
+	stateKey := req.Sender
+	contentBytes, _ := json.Marshal(req.Content)
+	joinEvent := &domain.Evento{
+		ID:               req.EventID,
+		Tipo:             req.Type,
+		CanalID:          roomID,
+		Sender:           req.Sender,
+		StateKey:         &stateKey,
+		Content:          json.RawMessage(contentBytes),
+		OrigemServidorTS: req.OriginServerTS,
+	}
 
-    result, err := h.fedService.ProcessSendJoin(r.Context(), roomID, joinEvent)
-    if err != nil {
-        if errors.Is(err, types.ErrNotFound) {
-            httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Unknown room")
-            return
-        }
-        httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
-        return
-    }
+	result, err := h.fedService.ProcessSendJoin(r.Context(), roomID, joinEvent)
+	if err != nil {
+		if errors.Is(err, types.ErrNotFound) {
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Unknown room")
+			return
+		}
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+		return
+	}
 
-    httputil.WriteJSON(w, http.StatusOK, SendJoinResponse{
-        State:         result.StateEvents,
-        AuthChain:     result.StateEvents, // simplificação: auth chain = estado atual
-        ServersInRoom: result.ServersInRoom,
-    })
+	httputil.WriteJSON(w, http.StatusOK, SendJoinResponse{
+		State:         result.StateEvents,
+		AuthChain:     result.StateEvents, // simplificação: auth chain = estado atual
+		ServersInRoom: result.ServersInRoom,
+	})
 }
 
 // verifyEventSignature verifica a assinatura ed25519 do PDU recebido.
 func (h *Handler) verifyEventSignature(req SendJoinRequest) error {
-    serverSigs, ok := req.Signatures[req.Origin]
-    if !ok {
-        return fmt.Errorf("no signature from origin server %s", req.Origin)
-    }
+	serverSigs, ok := req.Signatures[req.Origin]
+	if !ok {
+		return fmt.Errorf("no signature from origin server %s", req.Origin)
+	}
 
-    keyID, pubKey, err := h.keyFetcher(req.Origin)
-    if err != nil {
-        return fmt.Errorf("could not fetch public key: %w", err)
-    }
+	keyID, pubKey, err := h.keyFetcher(req.Origin)
+	if err != nil {
+		return fmt.Errorf("could not fetch public key: %w", err)
+	}
 
-    sig, ok := serverSigs[keyID]
-    if !ok {
-        return fmt.Errorf("no signature for key %s", keyID)
-    }
+	sig, ok := serverSigs[keyID]
+	if !ok {
+		return fmt.Errorf("no signature for key %s", keyID)
+	}
 
-    sigBytes, err := base64.RawStdEncoding.DecodeString(sig)
-    if err != nil {
-        return fmt.Errorf("invalid signature encoding: %w", err)
-    }
+	sigBytes, err := base64.RawStdEncoding.DecodeString(sig)
+	if err != nil {
+		return fmt.Errorf("invalid signature encoding: %w", err)
+	}
 
-    payload := map[string]interface{}{
-        "content":          req.Content,
-        "origin":           req.Origin,
-        "origin_server_ts": req.OriginServerTS,
-        "room_id":          req.RoomID,
-        "sender":           req.Sender,
-        "state_key":        req.StateKey,
-        "type":             req.Type,
-    }
-    canonical, err := util.CanonicalJSON(payload)
-    if err != nil {
-        return fmt.Errorf("failed to canonicalize event: %w", err)
-    }
+	payload := map[string]interface{}{
+		"content":          req.Content,
+		"origin":           req.Origin,
+		"origin_server_ts": req.OriginServerTS,
+		"room_id":          req.RoomID,
+		"sender":           req.Sender,
+		"state_key":        req.StateKey,
+		"type":             req.Type,
+	}
+	canonical, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return fmt.Errorf("failed to canonicalize event: %w", err)
+	}
 
-    if !ed25519.Verify(pubKey, canonical, sigBytes) {
-        return fmt.Errorf("signature verification failed")
-    }
-    return nil
+	if !ed25519.Verify(pubKey, canonical, sigBytes) {
+		return fmt.Errorf("signature verification failed")
+	}
+	return nil
+}
+
+func (h *Handler) putInvite(w http.ResponseWriter, r *http.Request) {
+	roomID := r.PathValue("roomId")
+	eventID := r.PathValue("eventId")
+
+	var req InviteRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+		return
+	}
+
+	var eventMap map[string]any
+	dec := json.NewDecoder(bytes.NewReader(req.Event))
+	dec.UseNumber()
+	if err := dec.Decode(&eventMap); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "invalid event payload")
+		return
+	}
+
+	// Validação do evento
+	// Basic Event Validations
+	tipo, _ := eventMap["type"].(string)
+	if tipo != "m.room.member" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "event type must be m.room.member")
+		return
+	}
+
+	content, ok := eventMap["content"].(map[string]interface{})
+	if !ok {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "missing event content")
+		return
+	}
+
+	membership, _ := content["membership"].(string)
+	if membership != "invite" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "membership must be invite")
+		return
+	}
+
+	stateKey, ok := eventMap["state_key"].(string)
+	if !ok {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "missing state_key")
+		return
+	}
+
+	// confere se o invite é para esse servidor
+	parts := strings.SplitN(stateKey, ":", 2)
+	if len(parts) != 2 || parts[1] != h.sysService.GetServerName() {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invited user must be local")
+		return
+	}
+
+	sender, _ := eventMap["sender"].(string)
+	senderParts := strings.SplitN(sender, ":", 2)
+	if len(senderParts) != 2 {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invalid sender")
+		return
+	}
+
+	// Valida a assinatura do servidor
+	if err := h.verifyRawEventSignature(eventMap, senderParts[1]); err != nil {
+		httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "invalid signature: "+err.Error())
+		return
+	}
+
+	var evento domain.Evento
+	_ = json.Unmarshal(req.Event, &evento)
+	evento.ID = eventID
+	evento.CanalID = roomID
+	evento.Tipo = tipo
+	evento.Sender = sender
+	evento.StateKey = &stateKey
+	contentBytes, _ := util.CanonicalJSON(content)
+	evento.Content = contentBytes
+
+	// Salva o evento
+	err := h.fedService.ProcessInvite(r.Context(), roomID, &evento)
+	if err != nil {
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+		return
+	}
+
+	signRaw, err := util.SignMatrixEvent(&evento, h.sysService.GetServerName(), h.sysService.GetServerKeyID(), h.sysService.GetPrivateKey())
+	if err != nil {
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to sign event")
+		return
+	}
+
+	var newSigs map[string]any
+	if err := json.Unmarshal(signRaw, &newSigs); err != nil {
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to parse generated signature")
+		return
+	}
+
+	// 3. Retrieve or initialize the "signatures" map in our original eventMap
+	existingSigsRaw, ok := eventMap["signatures"]
+	var existingSigs map[string]any
+	if ok && existingSigsRaw != nil {
+		if s, isMap := existingSigsRaw.(map[string]any); isMap {
+			existingSigs = s
+		} else {
+			existingSigs = make(map[string]any)
+		}
+	} else {
+		existingSigs = make(map[string]any)
+	}
+
+	// 4. Attach our newly generated signature to the event
+	maps.Copy(existingSigs, newSigs)
+	eventMap["signatures"] = existingSigs
+
+	// 5. Marshal the full event (now containing both origin's and our signature) to send it back
+	SignedEventJSON, err := json.Marshal(eventMap)
+	if err != nil {
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to marshal response event")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, InviteResponse{Event: SignedEventJSON})
+}
+
+// Verfica a assinatura de um evento do matrix
+func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origin string) error {
+	sigs, ok := eventMap["signatures"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("missing signatures")
+	}
+	originSigsRaw, ok := sigs[origin]
+	if !ok {
+		return fmt.Errorf("no signature from origin %s", origin)
+	}
+	originSigs, ok := originSigsRaw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid signature format")
+	}
+
+	keyID, pubKey, err := h.keyFetcher(origin)
+	if err != nil {
+		return fmt.Errorf("could not fetch public key: %w", err)
+	}
+
+	sigRaw, ok := originSigs[keyID]
+	if !ok {
+		return fmt.Errorf("no signature for key %s", keyID)
+	}
+	sig, ok := sigRaw.(string)
+	if !ok {
+		return fmt.Errorf("invalid signature string format")
+	}
+
+	sigBytes, err := base64.RawStdEncoding.DecodeString(sig)
+	if err != nil {
+		return fmt.Errorf("invalid signature encoding: %w", err)
+	}
+
+	payload := make(map[string]interface{})
+	for k, v := range eventMap {
+		if k != "signatures" && k != "unsigned" {
+			payload[k] = v
+		}
+	}
+	canonical, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return fmt.Errorf("failed to canonicalize event: %w", err)
+	}
+
+	if !ed25519.Verify(pubKey, canonical, sigBytes) {
+		return fmt.Errorf("signature verification failed")
+	}
+	return nil
 }

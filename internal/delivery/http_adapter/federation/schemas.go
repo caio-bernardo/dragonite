@@ -1,6 +1,10 @@
 package federation
 
-import "github.com/caio-bernardo/dragonite/internal/domain"
+import (
+	"encoding/json"
+
+	"github.com/caio-bernardo/dragonite/internal/domain"
+)
 
 type VersionResponse struct {
 	Server struct {
@@ -43,56 +47,73 @@ type StateResponse struct {
 // publicRooms
 
 type PublicRoomsFilter struct {
-    GenericSearchTerm string    `json:"generic_search_term,omitempty"`
-    RoomTypes         []*string `json:"room_types,omitempty"`
+	GenericSearchTerm string    `json:"generic_search_term,omitempty"`
+	RoomTypes         []*string `json:"room_types,omitempty"`
 }
 
 type PublicRoomsRequest struct {
-    Filter               *PublicRoomsFilter `json:"filter,omitempty"`
-    IncludeAllNetworks   bool               `json:"include_all_networks,omitempty"`
-    Limit                int                `json:"limit,omitempty"`
-    Since                string             `json:"since,omitempty"`
-    ThirdPartyInstanceID string             `json:"third_party_instance_id,omitempty"`
+	Filter               *PublicRoomsFilter `json:"filter,omitempty"`
+	IncludeAllNetworks   bool               `json:"include_all_networks,omitempty"`
+	Limit                int                `json:"limit,omitempty"`
+	Since                string             `json:"since,omitempty"`
+	ThirdPartyInstanceID string             `json:"third_party_instance_id,omitempty"`
 }
 
-// make_join 
+// make_join
 
 type MembershipContent struct {
-    JoinAuthorisedViaUsersServer string `json:"join_authorised_via_users_server,omitempty"`
-    Membership                   string `json:"membership"`
+	JoinAuthorisedViaUsersServer string `json:"join_authorised_via_users_server,omitempty"`
+	Membership                   string `json:"membership"`
 }
 
 type EventTemplate struct {
-    Content        MembershipContent `json:"content"`
-    Origin         string            `json:"origin"`
-    OriginServerTS int64             `json:"origin_server_ts"`
-    RoomID         string            `json:"room_id"`
-    Sender         string            `json:"sender"`
-    StateKey       string            `json:"state_key"`
-    Type           string            `json:"type"`
+	Content        MembershipContent `json:"content"`
+	Origin         string            `json:"origin"`
+	OriginServerTS int64             `json:"origin_server_ts"`
+	RoomID         string            `json:"room_id"`
+	Sender         string            `json:"sender"`
+	StateKey       string            `json:"state_key"`
+	Type           string            `json:"type"`
 }
 
 type MakeJoinResponse struct {
-    Event       EventTemplate `json:"event"`
-    RoomVersion string        `json:"room_version"`
+	Event       EventTemplate `json:"event"`
+	RoomVersion string        `json:"room_version"`
 }
 
 // send_join
 
 type SendJoinRequest struct {
-    Content        MembershipContent            `json:"content"`
-    Origin         string                       `json:"origin"`
-    OriginServerTS int64                        `json:"origin_server_ts"`
-    Sender         string                       `json:"sender"`
-    StateKey       string                       `json:"state_key"`
-    Type           string                       `json:"type"`
-    RoomID         string                       `json:"room_id"`
-    EventID        string                       `json:"event_id"`
-    Signatures     map[string]map[string]string `json:"signatures"`
+	Content        MembershipContent            `json:"content"`
+	Origin         string                       `json:"origin"`
+	OriginServerTS int64                        `json:"origin_server_ts"`
+	Sender         string                       `json:"sender"`
+	StateKey       string                       `json:"state_key"`
+	Type           string                       `json:"type"`
+	RoomID         string                       `json:"room_id"`
+	EventID        string                       `json:"event_id"`
+	Signatures     map[string]map[string]string `json:"signatures"`
 }
 
 type SendJoinResponse struct {
-    AuthChain     []domain.Evento `json:"auth_chain"`
-    State         []domain.Evento `json:"state"`
-    ServersInRoom []string        `json:"servers_in_room,omitempty"`
+	AuthChain     []domain.Evento `json:"auth_chain"`
+	State         []domain.Evento `json:"state"`
+	ServersInRoom []string        `json:"servers_in_room,omitempty"`
+}
+
+type StrippedStateEvent struct {
+	Content  json.RawMessage `json:"content"`
+	StateKey string          `json:"state_key"`
+	Type     string          `json:"type"`
+	Sender   string          `json:"sender"`
+}
+
+type InviteRequest struct {
+	RoomVersion     string               `json:"room_version"`
+	Event           json.RawMessage      `json:"event"`
+	InviteRoomState []StrippedStateEvent `json:"invite_room_state"`
+}
+
+type InviteResponse struct {
+	Event json.RawMessage `json:"event"`
 }
