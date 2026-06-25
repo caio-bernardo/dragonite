@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"io"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 )
@@ -76,4 +77,24 @@ type Notifier interface {
 // Executes operations inside a transaction. Commit if succeeds or rollback in failure
 type WorkUnit interface {
 	Execute(ctx context.Context, fn func(txCtx context.Context) error) error
+}
+
+// MidiaStorage define as operações de persistência de metadados de mídia no banco de dados.
+// Os arquivos em si são armazenados via FileStorage (MinIO).
+type MidiaStorage interface {
+	// SaveMidia persiste os metadados de um arquivo de mídia recém-carregado.
+	SaveMidia(ctx context.Context, midia *domain.Midia) error
+	// GetMidiaByID recupera os metadados pelo par (origin, idMidia) — chave primária composta.
+	GetMidiaByID(ctx context.Context, origin, idMidia string) (*domain.Midia, error)
+}
+ 
+// FileStorage define as operações de armazenamento de arquivos binários.
+// Implementado pelo MinioStorage em internal/infrastructure/minio.
+type FileStorage interface {
+	// Upload armazena o conteúdo do arquivo usando mediaID como chave.
+	Upload(ctx context.Context, mediaID string, content io.Reader, size int64, contentType string) error
+	// Download retorna um ReadCloser com o conteúdo do arquivo, o chamador deve fechá-lo
+	Download(ctx context.Context, mediaID string) (io.ReadCloser, error)
+	// Delete remove permanentemente o arquivo do object storage.
+	Delete(ctx context.Context, mediaID string) error
 }

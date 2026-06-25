@@ -24,6 +24,13 @@ type AppConfig struct {
 	RedisDB       int
 	PublicKey     ed25519.PublicKey
 	PrivateKey    ed25519.PrivateKey
+	// Configurações do MinIO (object storage para arquivos de mídia)
+	MinioEndpoint  string `env:"MINIO_ENDPOINT"`
+	MinioAccessKey string `env:"MINIO_ACCESS_KEY"`
+	MinioSecretKey string `env:"MINIO_SECRET_KEY"`
+	MinioUseSSL    bool   `env:"MINIO_USE_SSL"`
+	// Limite máximo de tamanho de upload em bytes (default: 50 MB)
+	MaxUploadBytes int64 `env:"MAX_UPLOAD_BYTES"`
 }
 
 func LoadConfig() (*AppConfig, error) {
@@ -64,6 +71,17 @@ func LoadConfig() (*AppConfig, error) {
 		return nil, errors.New("REDIS_PASSWORD variable is not set")
 	}
 
+	// Validação das variáveis do MinIO
+	if os.Getenv("MINIO_ENDPOINT") == "" {
+		return nil, errors.New("MINIO_ENDPOINT variable is not set")
+	}
+	if os.Getenv("MINIO_ACCESS_KEY") == "" {
+		return nil, errors.New("MINIO_ACCESS_KEY variable is not set")
+	}
+	if os.Getenv("MINIO_SECRET_KEY") == "" {
+		return nil, errors.New("MINIO_SECRET_KEY variable is not set")
+	}
+
 	databaseUrl := fmt.Sprintf(
 		"user=%s password=%s host=%s port=%s dbname=%s",
 		os.Getenv("DRAGONITE_DB_USERNAME"),
@@ -78,19 +96,37 @@ func LoadConfig() (*AppConfig, error) {
 		return nil, err
 	}
 
+	// MinIO SSL: false por padrão (ambiente local/dev), true em produção
+	minioUseSSL := os.Getenv("MINIO_USE_SSL") == "true"
+ 
+	// Limite de upload: padrão 50 MB se não configurado
+	var maxUploadBytes int64 = 50 * 1024 * 1024
+	if raw := os.Getenv("MAX_UPLOAD_BYTES"); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return nil, errors.New("MAX_UPLOAD_BYTES is not a valid integer")
+		}
+		maxUploadBytes = parsed
+	}
+
 	config := AppConfig{
-		ServerName:    os.Getenv("SERVER_NAME"),
-		ServerPort:    port,
-		Version:       os.Getenv("VERSION"),
-		JWTToken:      os.Getenv("JWT_TOKEN"),
-		DatabaseURL:   databaseUrl,
-		RedisHost:     os.Getenv("REDIS_HOST"),
-		RedisPort:     redis_port,
-		RedisPassword: os.Getenv("REDIS_PASSWORD"),
-		RedisDB:       0,
-		KeyID:         key,
-		PublicKey:     pubKey,
-		PrivateKey:    privKey,
+		ServerName:    	os.Getenv("SERVER_NAME"),
+		ServerPort:    	port,
+		Version:       	os.Getenv("VERSION"),
+		JWTToken:      	os.Getenv("JWT_TOKEN"),
+		DatabaseURL:   	databaseUrl,
+		RedisHost:     	os.Getenv("REDIS_HOST"),
+		RedisPort:     	redis_port,
+		RedisPassword: 	os.Getenv("REDIS_PASSWORD"),
+		RedisDB:       	0,
+		KeyID:         	key,
+		PublicKey:     	pubKey,
+		PrivateKey:    	privKey,
+		MinioEndpoint:  os.Getenv("MINIO_ENDPOINT"),
+		MinioAccessKey: os.Getenv("MINIO_ACCESS_KEY"),
+		MinioSecretKey: os.Getenv("MINIO_SECRET_KEY"),
+		MinioUseSSL:    minioUseSSL,
+		MaxUploadBytes: maxUploadBytes,
 	}
 
 	return &config, nil

@@ -11,6 +11,7 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/config"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure/minio"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/redis_infra"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
@@ -44,6 +45,23 @@ func main() {
 
 	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
 
+	// MinIO (object storage para arquivos de mídia)
+	minioStorage, err := minio_infra.NewMinioStorage(
+		config.MinioEndpoint,
+		config.MinioAccessKey,
+		config.MinioSecretKey,
+		config.MinioUseSSL,
+	)
+	if err != nil {
+		log.Fatal("Failed to connect to MinIO: ", err)
+	}
+ 
+	// Garante que o bucket de mídia existe antes de subir o servidor
+	if err := minioStorage.EnsureBucket(ctx); err != nil {
+		log.Fatal("Failed to ensure MinIO bucket: ", err)
+	}
+	log.Println("MinIO connected and bucket ready.")
+
 	// cria usecases
 	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	authRuleResolver := usecase.NewAuthRuleResolver(storage)
@@ -56,12 +74,14 @@ func main() {
 	syncService := usecase.NewSyncService(storage, notifier)
 	systemService := usecase.NewSystemService(config.ServerName, config.Version, config.PublicKey, config.PrivateKey, config.KeyID, storage)
 	usuarioService := usecase.NewUsuarioService(storage, storage, storage)
+	mediaService := usecase.NewMediaService(config.ServerName, minioStorage, storage, config.MaxUploadBytes)
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
 		config.ServerName, authService, dirService, fedService, profileService, roomMembershipService,
 		roomAdminService, roomInteractionsService, syncService, systemService,
 		usuarioService,
+		mediaService,
 		idempoCache,
 	)
 

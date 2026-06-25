@@ -28,6 +28,7 @@ type Server struct {
 	syncService             *usecase.SyncService
 	systemService           *usecase.SystemService
 	usuarioService          *usecase.UsuarioService
+	mediaService            *usecase.MediaService
 	idempotencyCache        infrastructure.IdempotencyCache
 }
 
@@ -45,6 +46,7 @@ func NewServer(port int,
 	syncService *usecase.SyncService,
 	systemService *usecase.SystemService,
 	usuarioService *usecase.UsuarioService,
+	mediaService *usecase.MediaService,
 	idempotencyCache infrastructure.IdempotencyCache,
 ) *http.Server {
 
@@ -62,6 +64,7 @@ func NewServer(port int,
 		syncService:             syncService,
 		systemService:           systemService,
 		usuarioService:          usuarioService,
+		mediaService:            mediaService,
 		idempotencyCache:        idempotencyCache,
 	}
 
@@ -91,6 +94,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		s.roomAdminService,
 		s.roomMembershipService,
 		s.roomInteractionsService,
+		s.mediaService,
 		s.idempotencyCache,
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)

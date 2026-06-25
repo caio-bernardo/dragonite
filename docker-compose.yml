@@ -17,6 +17,18 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
       - "${REDIS_PORT}:6379"
-
+  minio_dragonite:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"   # API S3 — usada pela aplicação
+      - "9001:9001"   # Console web — acesse em http://localhost:9001
+    volumes:
+      - minio_volume_dragonite:/data
+    command: server /data --console-address ":9001"
 volumes:
   psql_volume_dragonite:
+  minio_volume_dragonite:
