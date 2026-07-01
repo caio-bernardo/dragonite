@@ -82,6 +82,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
+	// regras de notificação (mock)
+	mux.Handle("GET /_matrix/client/v3/pushrules/", authMiddleware(http.HandlerFunc(h.getPushRules)))
 
 }
 
@@ -90,6 +92,15 @@ func (h *Handler) getVersions(w http.ResponseWriter, r *http.Request) {
 		Versions: []string{"r0.0.5", "v1.18"},
 	}
 	httputil.WriteJSON(w, 200, response)
+}
+
+// getPushRules retorna um mock vazio das regras de notificação do usuário
+// GET /_matrix/client/v3/pushrules/
+func (h *Handler) getPushRules(w http.ResponseWriter, r *http.Request) {
+	response := PushRulesResponse{
+		Global: map[string]any{},
+	}
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // searchUsers realiza a busca de usuários no diretório.

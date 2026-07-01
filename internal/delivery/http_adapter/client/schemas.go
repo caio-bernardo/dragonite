@@ -12,6 +12,11 @@ type SupportedVersionsResponse struct {
 	UnstableFeatures map[string]bool `json:"unstable_features,omitempty"`
 }
 
+// Resposta mockada de GET /_matrix/client/v3/pushrules/
+type PushRulesResponse struct {
+	Global map[string]any `json:"global"`
+}
+
 // Corpo da requisição POST /_matrix/client/v3/user_directory/search
 type UserSearchRequest struct {
 	SearchTerm string `json:"search_term"` // obrigatório pela spec

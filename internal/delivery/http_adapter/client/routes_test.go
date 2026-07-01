@@ -125,6 +125,28 @@ func TestGetVersions(t *testing.T) {
 	}
 }
 
+func TestGetPushRules(t *testing.T) {
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/pushrules/", nil)
+
+	h.getPushRules(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp PushRulesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Global == nil {
+		t.Fatalf("expected global key to be present in response")
+	}
+}
+
 func TestSearchUsersOK(t *testing.T) {
 	display := "Alice"
 	avatar := "mxc://example.com/a"
