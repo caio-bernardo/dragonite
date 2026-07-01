@@ -17,6 +17,11 @@ type PushRulesResponse struct {
 	Global map[string]any `json:"global"`
 }
 
+// Resposta mockada de POST /_matrix/client/v3/user/{userId}/filter
+type FilterUploadResponse struct {
+	FilterID string `json:"filter_id"`
+}
+
 // Corpo da requisição POST /_matrix/client/v3/user_directory/search
 type UserSearchRequest struct {
 	SearchTerm string `json:"search_term"` // obrigatório pela spec

@@ -84,6 +84,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
 	// regras de notificação (mock)
 	mux.Handle("GET /_matrix/client/v3/pushrules/", authMiddleware(http.HandlerFunc(h.getPushRules)))
+	// upload de filtro (mock)
+	mux.Handle("POST /_matrix/client/v3/user/{userId}/filter", authMiddleware(http.HandlerFunc(h.uploadFilter)))
 
 }
 
@@ -101,6 +103,24 @@ func (h *Handler) getPushRules(w http.ResponseWriter, r *http.Request) {
 		Global: map[string]any{},
 	}
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// uploadFilter é um mock que aceita uma definição de filtro e retorna um filter_id fixo
+// POST /_matrix/client/v3/user/{userId}/filter
+func (h *Handler) uploadFilter(w http.ResponseWriter, r *http.Request) {
+	var reqBody map[string]any
+	if err := httputil.ParseBody(r, &reqBody); err != nil {
+		if err == types.ErrNoBodyFound {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "No request body")
+		} else {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Invalid request body")
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, FilterUploadResponse{
+		FilterID: "0",
+	})
 }
 
 // searchUsers realiza a busca de usuários no diretório.
