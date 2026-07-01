@@ -56,7 +56,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to MinIO: ", err)
 	}
- 
+
 	// Garante que o bucket de mídia existe antes de subir o servidor
 	if err := minioStorage.EnsureBucket(ctx); err != nil {
 		log.Fatal("Failed to ensure MinIO bucket: ", err)
@@ -69,6 +69,7 @@ func main() {
 	dirService := usecase.NewDirectoryService(storage, storage, storage)
 	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage)
 	profileService := usecase.NewProfileService(storage)
+	accountService := usecase.NewAccountService(storage)
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage)
 	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
 	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver)
@@ -79,7 +80,7 @@ func main() {
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
-		config.ServerName, authService, dirService, fedService, profileService, roomMembershipService,
+		config.ServerName, authService, dirService, fedService, profileService, accountService, roomMembershipService,
 		roomAdminService, roomInteractionsService, syncService, systemService,
 		usuarioService,
 		mediaService,

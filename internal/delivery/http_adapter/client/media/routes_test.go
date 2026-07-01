@@ -16,7 +16,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
-// Fakes 
+// Fakes
 
 type routeFileStore struct {
 	uploadErr error
@@ -46,7 +46,7 @@ func ctxWithUser(userID string) context.Context {
 	return context.WithValue(context.Background(), types.UserIDKey, userID)
 }
 
-// Testes 
+// Testes
 
 func TestUploadMediaSuccess(t *testing.T) {
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 10*1024*1024)

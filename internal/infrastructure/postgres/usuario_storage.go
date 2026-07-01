@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -115,4 +116,36 @@ func (s *PostgresStorage) AddDirectMessage(ctx context.Context, senderID, receiv
 	}
 
 	return nil
+}
+
+// SaveAccountData upserts an account_data row
+func (s *PostgresStorage) SaveAccountData(ctx context.Context, account domain.AccountData) error {
+	db := getTxOrPool(ctx, s.db)
+	_, err := db.Exec(ctx,
+		`INSERT INTO AccountData (fk_id_usuario, id_canal, tipo, content) VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (fk_id_usuario, id_canal, tipo) DO UPDATE SET content = EXCLUDED.content`,
+		account.IDUsuario, account.IDCanal, account.Tipo, account.Content)
+	if err != nil {
+		return fmt.Errorf("failed to save account data: %w", err)
+	}
+	return nil
+}
+
+// GetAccountData retrieves a single account_data row
+func (s *PostgresStorage) GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error) {
+	db := getTxOrPool(ctx, s.db)
+	row := db.QueryRow(ctx,
+		"SELECT fk_id_usuario, id_canal, tipo, content FROM AccountData WHERE fk_id_usuario = $1 AND id_canal = $2 AND tipo = $3",
+		userID, roomID, tipo)
+
+	var acct domain.AccountData
+	var contentBytes []byte
+	if err := row.Scan(&acct.IDUsuario, &acct.IDCanal, &acct.Tipo, &contentBytes); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get account data: %w", err)
+	}
+	acct.Content = json.RawMessage(contentBytes)
+	return &acct, nil
 }

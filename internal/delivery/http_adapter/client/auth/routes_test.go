@@ -45,6 +45,13 @@ func (s *authUserStore) AddDirectMessage(ctx context.Context, senderID, receiver
 	return nil
 }
 
+func (s *authUserStore) SaveAccountData(ctx context.Context, account domain.AccountData) error {
+	return nil
+}
+func (s *authUserStore) GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error) {
+	return nil, nil
+}
+
 type authDeviceStore struct {
 	upserted *domain.Dispositivo
 }

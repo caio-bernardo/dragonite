@@ -22,6 +22,9 @@ type UsuarioStorage interface {
 	UpdateProfile(ctx context.Context, profile domain.Profile) error
 	SearchProfiles(ctx context.Context, filter SearchFilter) ([]domain.Profile, error)
 	AddDirectMessage(ctx context.Context, senderID, receiverID string, roomID string) error
+	// AccountData operations
+	SaveAccountData(ctx context.Context, account domain.AccountData) error
+	GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error)
 }
 
 type CanalStorage interface {
@@ -88,7 +91,7 @@ type MidiaStorage interface {
 	// GetMidiaByID recupera os metadados pelo par (origin, idMidia) — chave primária composta.
 	GetMidiaByID(ctx context.Context, origin, idMidia string) (*domain.Midia, error)
 }
- 
+
 // FileStorage define as operações de armazenamento de arquivos binários.
 // Implementado pelo MinioStorage em internal/infrastructure/minio.
 type FileStorage interface {

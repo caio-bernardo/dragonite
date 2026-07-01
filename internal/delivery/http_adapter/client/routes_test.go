@@ -41,6 +41,14 @@ func (c *clientUserStore) AddDirectMessage(ctx context.Context, senderID, receiv
 	return nil
 }
 
+func (c *clientUserStore) SaveAccountData(ctx context.Context, account domain.AccountData) error {
+	return nil
+}
+
+func (c *clientUserStore) GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error) {
+	return nil, nil
+}
+
 type clientCanalStore struct {
 	joinedRooms []string
 }
@@ -98,7 +106,7 @@ func (c *clientCanalStore) GetCanalParticipatingServers(ctx context.Context, can
 }
 
 func TestGetVersions(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/versions", nil)
@@ -135,7 +143,7 @@ func TestSearchUsersOK(t *testing.T) {
 	canalStore := &clientCanalStore{joinedRooms: []string{"!room1:example.com"}}
 	dirService := usecase.NewDirectoryService(nil, userStore, canalStore)
 
-	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{"search_term":"al","limit":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user_directory/search", body)
@@ -165,7 +173,7 @@ func TestSearchUsersOK(t *testing.T) {
 
 func TestSearchUsersMissingSearchTerm(t *testing.T) {
 	dirService := usecase.NewDirectoryService(nil, &clientUserStore{}, &clientCanalStore{})
-	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user_directory/search", body)

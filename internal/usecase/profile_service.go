@@ -28,7 +28,7 @@ func (p *ProfileService) GetProfileByUserID(ctx context.Context, user_id string)
 		return nil, types.ErrNotFound
 	}
 	if profile == nil {
-    return nil, types.ErrNotFound
+		return nil, types.ErrNotFound
 	}
 	return profile, nil
 

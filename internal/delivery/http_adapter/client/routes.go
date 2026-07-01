@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/account"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/auth"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/media"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/profile"
@@ -22,6 +23,7 @@ type Handler struct {
 	syncService      *usecase.SyncService
 	directoryService *usecase.DirectoryService
 	profileService   *usecase.ProfileService
+	accountService   *usecase.AccountService
 	authService      *usecase.AuthService
 	roomAdmin        *usecase.RoomAdminService
 	roomMembership   *usecase.RoomMembershipService
@@ -37,6 +39,7 @@ func NewHandler(
 	userStore *usecase.UsuarioService,
 	directoryStore *usecase.DirectoryService,
 	profileStore *usecase.ProfileService,
+	accountService *usecase.AccountService,
 	syncStore *usecase.SyncService,
 	roomAdmin *usecase.RoomAdminService,
 	roomMembership *usecase.RoomMembershipService,
@@ -49,6 +52,7 @@ func NewHandler(
 		userService:      userStore,
 		directoryService: directoryStore,
 		profileService:   profileStore,
+		accountService:   accountService,
 		syncService:      syncStore,
 		roomAdmin:        roomAdmin,
 		roomMembership:   roomMembership,
@@ -74,9 +78,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	profileHandler := profile.NewHandler(h.profileService)
 	profileHandler.RegisterRoutes(mux, authMiddleware)
 
+	// account data
+	accountHandler := account.NewHandler(h.accountService)
+	accountHandler.RegisterRoutes(mux, authMiddleware)
+
 	// upload de mídia
-	mediaHandler := media.NewHandler(h.mediaService) 
-	mediaHandler.RegisterRoutes(mux, authMiddleware)  
+	mediaHandler := media.NewHandler(h.mediaService)
+	mediaHandler.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil

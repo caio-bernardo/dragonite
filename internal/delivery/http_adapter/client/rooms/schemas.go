@@ -1,6 +1,6 @@
 package rooms
 
-// GET /publicRooms 
+// GET /publicRooms
 
 // PublicRoomChunk representa uma entrada na listagem de salas públicas.
 // Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3publicrooms
@@ -24,7 +24,7 @@ type PublicRoomsResponse struct {
 	TotalRoomCountEstimate *int              `json:"total_room_count_estimate,omitempty"`
 }
 
-// POST /createRoom 
+// POST /createRoom
 
 // InitialStateEvent representa um evento de estado a ser inserido na criação.
 // Ref: https://spec.matrix.org/v1.18/client-server-api/#post_matrixclientv3createroom
@@ -36,8 +36,8 @@ type InitialStateEvent struct {
 
 // CreateRoomRequest é o corpo de requisição de POST /createRoom.
 type CreateRoomRequest struct {
-	Visibility    string              `json:"visibility"`        // "public" | "private"
-	RoomAliasName *string             `json:"room_alias_name"`   // sem '#' e sem ':server'
+	Visibility    string              `json:"visibility"`      // "public" | "private"
+	RoomAliasName *string             `json:"room_alias_name"` // sem '#' e sem ':server'
 	Name          *string             `json:"name,omitempty"`
 	Topic         *string             `json:"topic,omitempty"`
 	Invite        []string            `json:"invite,omitempty"`
@@ -52,7 +52,7 @@ type CreateRoomResponse struct {
 	RoomID string `json:"room_id"`
 }
 
-//  POST /rooms/{roomId}/join 
+//  POST /rooms/{roomId}/join
 
 // JoinRoomRequest é o corpo de requisição de POST /rooms/{roomId}/join.
 // O spec permite body vazio, então todos os campos são opcionais
@@ -73,6 +73,7 @@ type JoinRoomResponse struct {
 type LeaveRoomRequest struct {
 	Reason *string `json:"reason,omitempty"`
 }
+
 // Resposta de leave é {} com 200 OK, então não precisa de struct dedicada
 
 // PUT /rooms/{roomId}/send/{eventType}/{txnId}

@@ -127,6 +127,13 @@ func (f *fakeUsuarioStorage) AddDirectMessage(ctx context.Context, senderID, rec
 	return nil
 }
 
+func (f *fakeUsuarioStorage) SaveAccountData(ctx context.Context, account domain.AccountData) error {
+	return nil
+}
+func (f *fakeUsuarioStorage) GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error) {
+	return nil, nil
+}
+
 // helper para construir o handler de federation com profileService injetado
 func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handler {
 	t.Helper()

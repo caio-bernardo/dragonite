@@ -98,7 +98,7 @@ func LoadConfig() (*AppConfig, error) {
 
 	// MinIO SSL: false por padrão (ambiente local/dev), true em produção
 	minioUseSSL := os.Getenv("MINIO_USE_SSL") == "true"
- 
+
 	// Limite de upload: padrão 50 MB se não configurado
 	var maxUploadBytes int64 = 50 * 1024 * 1024
 	if raw := os.Getenv("MAX_UPLOAD_BYTES"); raw != "" {
@@ -110,18 +110,18 @@ func LoadConfig() (*AppConfig, error) {
 	}
 
 	config := AppConfig{
-		ServerName:    	os.Getenv("SERVER_NAME"),
-		ServerPort:    	port,
-		Version:       	os.Getenv("VERSION"),
-		JWTToken:      	os.Getenv("JWT_TOKEN"),
-		DatabaseURL:   	databaseUrl,
-		RedisHost:     	os.Getenv("REDIS_HOST"),
-		RedisPort:     	redis_port,
-		RedisPassword: 	os.Getenv("REDIS_PASSWORD"),
-		RedisDB:       	0,
-		KeyID:         	key,
-		PublicKey:     	pubKey,
-		PrivateKey:    	privKey,
+		ServerName:     os.Getenv("SERVER_NAME"),
+		ServerPort:     port,
+		Version:        os.Getenv("VERSION"),
+		JWTToken:       os.Getenv("JWT_TOKEN"),
+		DatabaseURL:    databaseUrl,
+		RedisHost:      os.Getenv("REDIS_HOST"),
+		RedisPort:      redis_port,
+		RedisPassword:  os.Getenv("REDIS_PASSWORD"),
+		RedisDB:        0,
+		KeyID:          key,
+		PublicKey:      pubKey,
+		PrivateKey:     privKey,
 		MinioEndpoint:  os.Getenv("MINIO_ENDPOINT"),
 		MinioAccessKey: os.Getenv("MINIO_ACCESS_KEY"),
 		MinioSecretKey: os.Getenv("MINIO_SECRET_KEY"),
