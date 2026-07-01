@@ -206,7 +206,7 @@ func (s *PostgresStorage) UpdateForwardExtremities(ctx context.Context, canalID 
 	// Apaga apenas extremidades antigas do DAG
 	if len(prevEvents) > 0 {
 		_, err := db.Exec(ctx, `
-				DELETE FROM Canal_Forward_Extremities
+				DELETE FROM Canal_Extremidades
 				WHERE id_canal = $1 AND id_evento = ANY($2)
 			`, canalID, pq.Array(prevEvents))
 		if err != nil {
@@ -216,7 +216,7 @@ func (s *PostgresStorage) UpdateForwardExtremities(ctx context.Context, canalID 
 
 	// Insere o novo evento como a nova ponta livre do DAG
 	_, err := db.Exec(ctx, `
-			INSERT INTO Canal_Forward_Extremities (id_canal, id_evento)
+			INSERT INTO Canal_Extremidades (id_canal, id_evento)
 			VALUES ($1, $2)
 			ON CONFLICT DO NOTHING
 		`, canalID, eventID)
