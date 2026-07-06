@@ -60,6 +60,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
+	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -382,4 +383,41 @@ func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
 
     httputil.WriteJSON(w, http.StatusOK, response)
 
+}
+
+// postReceipt atualiza o marcador de leitura do utilizador para um determinado evento
+// POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}
+func (h *Handler) postReceipt(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	receiptType := r.PathValue("receiptType") // Será "m.read" na maior parte dos casos
+	eventID := r.PathValue("eventId")
+
+	if roomID == "" || receiptType == "" || eventID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing required path parameters")
+		return
+	}
+
+	// Delegar para a regra de negócio
+	err := h.roomInteractions.SendReceipt(ctx, userID, roomID, receiptType, eventID)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "User is not in the room")
+			return
+		}
+		log.Printf("[ERROR] POST /receipt: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to update receipt")
+		return
+	}
+
+	// O spec Matrix exige que se devolva um objeto JSON vazio em caso de sucesso
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }

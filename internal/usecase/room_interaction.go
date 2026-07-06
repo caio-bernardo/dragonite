@@ -275,3 +275,20 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 		Chunk: eventos,
 	}, nil
 }
+
+// SendReceipt trata da lógica de negócio para recibos de leitura
+func (s *RoomInteractionService) SendReceipt(ctx context.Context, userID, roomID, receiptType, eventID string) error {
+	// O utilizador só pode enviar recibos de salas onde está ativamente (join)
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return types.ErrForbidden
+	}
+
+	// Gravar no PostgreSQL
+	ts := time.Now().UnixMilli()
+	if err := s.eventoRepo.SaveReceipt(ctx, userID, roomID, receiptType, eventID, ts); err != nil {
+		return fmt.Errorf("failed to persist receipt: %w", err)
+	}
+
+	return nil
+}

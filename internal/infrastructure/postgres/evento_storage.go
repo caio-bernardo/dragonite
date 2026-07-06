@@ -360,3 +360,22 @@ func (s *PostgresStorage) GetMissingEvents(ctx context.Context, roomID string, e
 
 	return eventos, nil
 }
+
+func (s *PostgresStorage) SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error {
+
+	query := `
+		INSERT INTO read_receipts (room_id, user_id, event_id, ts)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (room_id, user_id)
+		DO UPDATE SET
+			event_id = EXCLUDED.event_id,
+			ts = EXCLUDED.ts;
+	`
+
+	_, err := s.db.Exec(ctx, query, roomID, userID, eventID, ts)
+	if err != nil {
+		return fmt.Errorf("failed to execute upsert read receipt query: %w", err)
+	}
+
+	return nil
+}

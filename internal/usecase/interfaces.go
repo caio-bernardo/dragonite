@@ -60,6 +60,8 @@ type EventoStorage interface {
 	GetCurrentStateEvents(ctx context.Context, roomID string) ([]domain.Evento, error)
 	GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error)
 	GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error)
+	// SaveReceipt atualiza o ponteiro de leitura de um utilizador numa sala
+	SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error
 }
 
 type DeviceStorage interface {
