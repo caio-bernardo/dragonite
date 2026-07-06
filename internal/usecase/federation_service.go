@@ -555,3 +555,21 @@ func (f *FederationService) HandleBackfill(ctx context.Context, roomID string, e
 
 	return resp, nil
 }
+
+// HandleGetMissingEvents atende a pedidos de outros servidores que precisam preencher buracos no seu histórico
+func (f *FederationService) HandleGetMissingEvents(ctx context.Context, roomID string, req GetMissingEventsRequest) (*GetMissingEventsResponse, error) {
+
+	eventos, err := f.eventoStore.GetMissingEvents(ctx, roomID, req.EarliestEvents, req.LatestEvents, req.Limit, req.MinDepth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve missing events: %w", err)
+	}
+
+	// Opcional: Se a base de dados não encontrar nada, garantimos que devolve um array vazio e não null
+	if eventos == nil {
+		eventos = []domain.Evento{}
+	}
+
+	return &GetMissingEventsResponse{
+		Events: eventos,
+	}, nil
+}

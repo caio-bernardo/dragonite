@@ -299,3 +299,64 @@ func (s *PostgresStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID st
 
 	return pduIDs, authChainIDs, nil
 }
+
+func (s *PostgresStorage) GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error) {
+	// Prevenção contra nil slices que o driver do Postgres não gosta no pq.Array
+	if earliestEvents == nil { earliestEvents = []string{} }
+	if latestEvents == nil { latestEvents = []string{} }
+
+	query := `
+		WITH RECURSIVE missing_tree AS (
+			-- Caso Base: Os latest_events conhecidos pelo servidor remoto
+			SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key, prev_eventos, auth_eventos, depth, 1 AS distance
+			FROM Evento
+			WHERE id_canal = $1 AND id_evento = ANY($2)
+
+			UNION
+
+			-- Passo Recursivo: Descer na árvore de prev_eventos
+			SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key, e.prev_eventos, e.auth_eventos, e.depth, mt.distance + 1
+			FROM Evento e
+			JOIN missing_tree mt ON e.id_evento = ANY(mt.prev_eventos)
+			WHERE
+				-- Condições de paragem exigidas pelo protocolo Matrix:
+				NOT (e.id_evento = ANY($3)) -- Pára se encontrar um earliest_event
+				AND e.depth >= $4           -- Pára se for mais profundo do que min_depth
+				AND mt.distance <= $5       -- Limite de segurança da recursão = limit param
+		)
+		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key, prev_eventos, auth_eventos, depth
+		FROM missing_tree
+		-- A especificação determina que a resposta NÃO pode conter os latest_events nem os earliest_events
+		WHERE NOT (id_evento = ANY($2)) AND NOT (id_evento = ANY($3))
+		-- A resposta deve vir ordenada por profundidade topológica (do mais antigo para o mais recente)
+		ORDER BY depth ASC
+		LIMIT $5;
+	`
+
+	rows, err := s.db.Query(ctx, query, roomID, pq.Array(latestEvents), pq.Array(earliestEvents), minDepth, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query missing events failed: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+
+		err := rows.Scan(
+			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
+			&event.OrigemServidorTS, &event.Content, &event.StreamOrdering,
+			&stateKey, pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan missing events failed: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+
+	return eventos, nil
+}

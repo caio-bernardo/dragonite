@@ -59,6 +59,7 @@ type EventoStorage interface {
 	CheckEventoExists(ctx context.Context, eventID string) (bool, error)
 	GetCurrentStateEvents(ctx context.Context, roomID string) ([]domain.Evento, error)
 	GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error)
+	GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error)
 }
 
 type DeviceStorage interface {

@@ -70,6 +70,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
 	mux.HandleFunc("GET /_matrix/federation/v1/state_ids/{roomId}", h.getStateIDs)
 	mux.HandleFunc("GET /_matrix/federation/v1/backfill/{roomId}", h.getBackfill)
+	mux.HandleFunc("POST /_matrix/federation/v1/get_missing_events/{roomId}", h.postGetMissingEvents)
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -904,4 +905,37 @@ func (h *Handler) getStateIDs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// postGetMissingEvents permite a outros servidores recuperar eventos que lhes faltam no DAG
+// POST /_matrix/federation/v1/get_missing_events/{roomId}
+func (h *Handler) postGetMissingEvents(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
+		return
+	}
+
+	var req usecase.GetMissingEventsRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Invalid JSON body")
+		return
+	}
+
+	// Matrix spec: se não enviarem limite, o padrão recomendado é 10
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
+	resp, err := h.fedService.HandleGetMissingEvents(ctx, roomID, req)
+	if err != nil {
+		log.Printf("[ERROR] POST /get_missing_events: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to compute missing events")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
