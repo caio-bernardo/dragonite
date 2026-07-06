@@ -519,3 +519,21 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 	})
 	return err
 }
+
+// GetStateIDsForEvent recolhe o estado da sala no momento do eventID e a sua cadeia de autorização
+func (f *FederationService) GetStateIDsForEvent(ctx context.Context, roomID, eventID string) ([]string, []string, error) {
+
+	// 1. Validar se o evento existe e pertence a esta sala
+	exists, err := f.eventoStore.CheckEventoExists(ctx, eventID)
+	if err != nil || !exists {
+		return nil, nil, fmt.Errorf("event not found or db error: %w", err)
+	}
+
+	// 2. Obter as listas de IDs da base de dados
+	pduIDs, authIDs, err := f.eventoStore.GetStateAndAuthChainIDs(ctx, roomID, eventID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch state ids: %w", err)
+	}
+
+	return pduIDs, authIDs, nil
+}

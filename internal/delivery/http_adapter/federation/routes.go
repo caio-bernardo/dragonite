@@ -67,7 +67,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendJoin)))
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
-}
+	mux.HandleFunc("GET /_matrix/federation/v1/state_ids/{roomId}", h.getStateIDs)
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
 	res := VersionResponse{}
@@ -869,4 +869,35 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 		return fmt.Errorf("signature verification failed")
 	}
 	return nil
+}
+
+// getStateIDs retorna os IDs de estado de uma sala num determinado evento
+// GET /_matrix/federation/v1/state_ids/{roomId}
+func (h *Handler) getStateIDs(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	roomID := r.PathValue("roomId")
+	eventID := r.URL.Query().Get("event_id")
+
+	// O spec exige event_id para saber de que momento da história estamos falando
+	if roomID == "" || eventID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId or event_id")
+		return
+	}
+
+	// Chama o UseCase passando a responsabilidade
+	pduIDs, authIDs, err := h.fedService.GetStateIDsForEvent(ctx, roomID, eventID)
+	if err != nil {
+		log.Printf("[ERROR] GET /state_ids: %v", err)
+		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Event or state not found")
+		return
+	}
+
+	response := StateIDsResponse{
+		PDUIDs:       pduIDs,
+		AuthChainIDs: authIDs,
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }

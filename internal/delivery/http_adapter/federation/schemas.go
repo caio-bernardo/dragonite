@@ -138,3 +138,8 @@ type InviteRequest struct {
 type InviteResponse struct {
 	Event json.RawMessage `json:"event"`
 }
+
+type StateIDsResponse struct {
+	PDUIDs       []string `json:"pdu_ids"`
+	AuthChainIDs []string `json:"auth_chain_ids"`
+}

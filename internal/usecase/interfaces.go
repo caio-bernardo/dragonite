@@ -25,6 +25,7 @@ type UsuarioStorage interface {
 	// AccountData operations
 	SaveAccountData(ctx context.Context, account domain.AccountData) error
 	GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error)
+	GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error)
 }
 
 type CanalStorage interface {
@@ -57,6 +58,7 @@ type EventoStorage interface {
 	GetEventsSince(ctx context.Context, roomID string, limit int, eventIDs []string) ([]domain.Evento, error)
 	CheckEventoExists(ctx context.Context, eventID string) (bool, error)
 	GetCurrentStateEvents(ctx context.Context, roomID string) ([]domain.Evento, error)
+	GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error)
 }
 
 type DeviceStorage interface {

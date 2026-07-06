@@ -230,3 +230,66 @@ func (s *PostgresStorage) GetRoomMessagesHistory(ctx context.Context, roomID str
 
 	return eventos, nil
 }
+
+func (s *PostgresStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	// Ir buscar os PDU IDs (Os eventos de estado propriamente ditos)
+
+	stateQuery := `
+		SELECT e.id_evento
+		FROM Canal_Estado_Atual cea
+		JOIN Evento e ON e.id_evento = cea.id_evento
+		WHERE cea.id_canal = $1
+	`
+	rows, err := s.db.Query(ctx, stateQuery, roomID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query state failed: %w", err)
+	}
+	defer rows.Close()
+
+	var pduIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			pduIDs = append(pduIDs, id)
+		}
+	}
+	rows.Close() // Fechar cedo para liberar a conexão
+
+	if len(pduIDs) == 0 {
+		return []string{}, []string{}, nil
+	}
+
+	authChainQuery := `
+		WITH RECURSIVE auth_tree AS (
+			-- Caso Base: Os auth_events diretamente referenciados pelos PDU_IDs encontrados
+			SELECT unnest(auth_eventos) as auth_id
+			FROM Evento
+			WHERE id_evento = ANY($1)
+
+			UNION
+
+			-- Passo Recursivo: Buscar os auth_events dos eventos encontrados no passo anterior
+			SELECT unnest(e.auth_eventos)
+			FROM Evento e
+			INNER JOIN auth_tree at ON e.id_evento = at.auth_id
+			WHERE e.auth_eventos IS NOT NULL
+		)
+		SELECT DISTINCT auth_id FROM auth_tree WHERE auth_id IS NOT NULL;
+	`
+
+	authRows, err := s.db.Query(ctx, authChainQuery, pq.Array(pduIDs))
+	if err != nil {
+		return nil, nil, fmt.Errorf("query auth chain failed: %w", err)
+	}
+	defer authRows.Close()
+
+	var authChainIDs []string
+	for authRows.Next() {
+		var authID string
+		if err := authRows.Scan(&authID); err == nil {
+			authChainIDs = append(authChainIDs, authID)
+		}
+	}
+
+	return pduIDs, authChainIDs, nil
+}
