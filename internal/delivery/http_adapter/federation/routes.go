@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"log"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -68,6 +69,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
 	mux.HandleFunc("GET /_matrix/federation/v1/state_ids/{roomId}", h.getStateIDs)
+	mux.HandleFunc("GET /_matrix/federation/v1/backfill/{roomId}", h.getBackfill)
+}
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
 	res := VersionResponse{}
@@ -873,6 +876,7 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 
 // getStateIDs retorna os IDs de estado de uma sala num determinado evento
 // GET /_matrix/federation/v1/state_ids/{roomId}
+// https://spec.matrix.org/v1.18/server-server-api/#get_matrixfederationv1state_idsroomid
 func (h *Handler) getStateIDs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
 	defer cancel()

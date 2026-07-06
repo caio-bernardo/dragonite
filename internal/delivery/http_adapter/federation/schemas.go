@@ -143,3 +143,15 @@ type StateIDsResponse struct {
 	PDUIDs       []string `json:"pdu_ids"`
 	AuthChainIDs []string `json:"auth_chain_ids"`
 }
+
+type BackfillResponse struct {
+	Origin         string          `json:"origin"`
+	OriginServerTS int64           `json:"origin_server_ts"`
+	PDUs           []domain.Evento `json:"pdus"`
+}
+
+type BackfillResult struct {
+	Origin         string          `json:"origin"`
+	OriginServerTS int64           `json:"origin_server_ts"`
+	PDUs           []domain.Evento `json:"pdus"`
+}

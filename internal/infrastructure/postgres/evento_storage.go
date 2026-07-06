@@ -98,6 +98,7 @@ func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, lim
 			JOIN dag_backfill db ON e.id_evento = ANY(db.prev_eventos)
 			WHERE db.distance < $3
 		)
+		-- CORREÇÃO: Adicionadas as colunas prev_eventos, auth_eventos e depth no SELECT final
 		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key, prev_eventos, auth_eventos, depth
 		FROM dag_backfill
 		ORDER BY depth DESC, distance ASC
@@ -105,7 +106,7 @@ func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, lim
 	`
 	rows, err := s.db.Query(ctx, query, roomID, pq.Array(events), limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get events: %w", err)
+		return nil, fmt.Errorf("failed to get events for backfill: %w", err)
 	}
 	defer rows.Close()
 
@@ -113,9 +114,14 @@ func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, lim
 	for rows.Next() {
 		var event domain.Evento
 		var stateKey sql.NullString
-		err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &event.StreamOrdering, &stateKey, &event.PrevEventos, &event.AuthEventos, &event.Depth)
+		// Agora o número de argumentos no Scan (11) bate certo com o SELECT (11)
+		err := rows.Scan(
+			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
+			&event.OrigemServidorTS, &event.Content, &event.StreamOrdering,
+			&stateKey, pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan event: %w", err)
+			return nil, fmt.Errorf("failed to scan backfill event: %w", err)
 		}
 		if stateKey.Valid {
 			event.StateKey = &stateKey.String

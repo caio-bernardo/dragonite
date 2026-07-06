@@ -537,3 +537,21 @@ func (f *FederationService) GetStateIDsForEvent(ctx context.Context, roomID, eve
 
 	return pduIDs, authIDs, nil
 }
+
+// HandleBackfill procura os eventos anteriores na árvore (DAG) para enviar a outro servidor
+func (f *FederationService) HandleBackfill(ctx context.Context, roomID string, eventIDs []string, limit int) (*BackfillResult, error) {
+	// Pede à base de dados para descer a árvore recursivamente
+	eventos, err := f.eventoStore.GetEventsSince(ctx, roomID, limit, eventIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch backfill events: %w", err)
+	}
+
+	// Constrói o resultado com os metadados necessários
+	resp := &BackfillResult{
+		Origin:         f.serverName,
+		OriginServerTS: time.Now().UnixMilli(),
+		PDUs:           eventos,
+	}
+
+	return resp, nil
+}
