@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client"
@@ -112,6 +114,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
+	mux.HandleFunc("GET /.well-known/matrix/{fileName}", s.wellKnownMatrixHandler)
 
 	// wildcard
 	mux.HandleFunc("GET /", s.HelloWorldHandler)
@@ -143,5 +146,28 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if _, err := w.Write(resp); err != nil {
 		log.Printf("Failed to write response: %v", err)
+	}
+}
+
+func (s *Server) wellKnownMatrixHandler(w http.ResponseWriter, r *http.Request) {
+	fileName := r.PathValue("fileName")
+	if !isAllowedWellKnownMatrixFile(fileName) {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.ServeFile(w, r, filepath.Join("static", ".well-known", "matrix", fileName))
+}
+
+func isAllowedWellKnownMatrixFile(fileName string) bool {
+	if fileName == "" || strings.Contains(fileName, "/") || strings.Contains(fileName, "..") {
+		return false
+	}
+
+	switch fileName {
+	case "client", "server", "support":
+		return true
+	default:
+		return false
 	}
 }
