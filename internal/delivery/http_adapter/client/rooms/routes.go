@@ -59,7 +59,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// sem stateKey — stateKey vazio, trailing slash opcional (ex: /state/m.room.name ou /state/m.room.name/)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
-	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
 	// marcação de leitura (mock)
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
@@ -372,89 +371,15 @@ func (h *Handler) putStateEvent(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, StateEventResponse{EventID: eventID})
 }
 
-// getRoomMessages retorna o histórico de eventos de uma sala
-// GET /_matrix/client/v3/rooms/{roomId}/messages
-// https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3roomsroomidmessages
-func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
-	defer cancel()
-
-	userID, ok := ctx.Value(types.UserIDKey).(string)
-    if !ok || userID == "" {
-        httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Missing or invalid access token")
-        return
-    }
-
-	roomID := r.PathValue("roomId")
-	if roomID == "" {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing roomId path parameter")
-		return
-	}
-
-    from := r.URL.Query().Get("from");
-    dir := r.URL.Query().Get("dir");
-
-    if dir == "" {
-		dir = "b" // "b" (backwards) é o padrão do Matrix
-	}
-
-    limitStr := r.URL.Query().Get("limit");
-    limit := 10 // Padrão recomendado pelo spec
-
-    if limitStr != "" {
-    	if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-     		limit = parsed
-     }
-    }
-
-    response, err := h.roomInteractions.GetMessages(ctx, roomID, userID, from, dir, limit)
-    if err != nil {
-    	if errors.Is(err, types.ErrForbidden) {
-			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You do not have permission to read this room's history")
-			return
-		}
-		log.Printf("[ERROR] GET /messages: %v", err)
-		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room messages")
-		return
-    }
-
-    httputil.WriteJSON(w, http.StatusOK, response)
-
-}
-
-// postReceipt atualiza o marcador de leitura do utilizador para um determinado evento
+// postReceipt é um mock para marcação de leitura 
 // POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}
 func (h *Handler) postReceipt(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
-	defer cancel()
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+}
 
-	userID, ok := ctx.Value(types.UserIDKey).(string)
-	if !ok || userID == "" {
-		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
-		return
-	}
-
-	roomID := r.PathValue("roomId")
-	receiptType := r.PathValue("receiptType") // Será "m.read" na maior parte dos casos
-	eventID := r.PathValue("eventId")
-
-	if roomID == "" || receiptType == "" || eventID == "" {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing required path parameters")
-		return
-	}
-
-	// Delegar para a regra de negócio
-	err := h.roomInteractions.SendReceipt(ctx, userID, roomID, receiptType, eventID)
-	if err != nil {
-		if errors.Is(err, types.ErrForbidden) {
-			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "User is not in the room")
-			return
-		}
-		log.Printf("[ERROR] POST /receipt: %v", err)
-		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to update receipt")
-		return
-	}
-
-	// O spec Matrix exige que se devolva um objeto JSON vazio em caso de sucesso
+// postReadMarkers é um mock para o fully read marker (m.fully_read) e, opcionalmente,
+// os read receipts (m.read / m.read.private) enviados no mesmo corpo.
+// POST /_matrix/client/v3/rooms/{roomId}/read_markers
+func (h *Handler) postReadMarkers(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }

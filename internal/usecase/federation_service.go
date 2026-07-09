@@ -523,58 +523,6 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 	return err
 }
 
-// GetStateIDsForEvent recolhe o estado da sala no momento do eventID e a sua cadeia de autorização
-func (f *FederationService) GetStateIDsForEvent(ctx context.Context, roomID, eventID string) ([]string, []string, error) {
-
-	// 1. Validar se o evento existe e pertence a esta sala
-	exists, err := f.eventoStore.CheckEventoExists(ctx, eventID)
-	if err != nil || !exists {
-		return nil, nil, fmt.Errorf("event not found or db error: %w", err)
-	}
-
-	// 2. Obter as listas de IDs da base de dados
-	pduIDs, authIDs, err := f.eventoStore.GetStateAndAuthChainIDs(ctx, roomID, eventID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch state ids: %w", err)
-	}
-
-	return pduIDs, authIDs, nil
-}
-
-// HandleBackfill procura os eventos anteriores na árvore (DAG) para enviar a outro servidor
-func (f *FederationService) HandleBackfill(ctx context.Context, roomID string, eventIDs []string, limit int) (*BackfillResult, error) {
-	// Pede à base de dados para descer a árvore recursivamente
-	eventos, err := f.eventoStore.GetEventsSince(ctx, roomID, limit, eventIDs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch backfill events: %w", err)
-	}
-
-	// Constrói o resultado com os metadados necessários
-	resp := &BackfillResult{
-		Origin:         f.serverName,
-		OriginServerTS: time.Now().UnixMilli(),
-		PDUs:           eventos,
-	}
-
-	return resp, nil
-}
-
-// HandleGetMissingEvents atende a pedidos de outros servidores que precisam preencher buracos no seu histórico
-func (f *FederationService) HandleGetMissingEvents(ctx context.Context, roomID string, req GetMissingEventsRequest) (*GetMissingEventsResponse, error) {
-
-	eventos, err := f.eventoStore.GetMissingEvents(ctx, roomID, req.EarliestEvents, req.LatestEvents, req.Limit, req.MinDepth)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve missing events: %w", err)
-	}
-
-	// Opcional: Se a base de dados não encontrar nada, garantimos que devolve um array vazio e não null
-	if eventos == nil {
-		eventos = []domain.Evento{}
-	}
-
-	return &GetMissingEventsResponse{
-		Events: eventos,
-	}, nil
 // FetchRemoteMedia busca um arquivo de mídia hospedado em um servidor Matrix remoto, para
 // implementar o proxy de GET /_matrix/client/v1/media/download/{serverName}/{mediaId} quando
 // serverName não é o nosso próprio servidor

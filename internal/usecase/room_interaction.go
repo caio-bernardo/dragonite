@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"strconv"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
@@ -22,13 +21,6 @@ type RoomInteractionService struct {
 	keyID            string
 	privateKey       ed25519.PrivateKey
 	uow              WorkUnit
-}
-
-type GetMessagesResponse struct {
-	Start string          `json:"start"`
-	End   string          `json:"end,omitempty"`
-	Chunk []domain.Evento `json:"chunk"`
-	State []domain.Evento `json:"state,omitempty"`
 }
 
 func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService *FederationService, authRuleResolver *AuthRuleResolver, uow WorkUnit, serverName, keyID string, privateKey ed25519.PrivateKey) *RoomInteractionService {
@@ -236,59 +228,4 @@ func (s *RoomInteractionService) BackfillRoomEvents(ctx context.Context, roomID 
 		return nil, err
 	}
 	return eventos, nil
-}
-
-func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID, from, dir string, limit int) (*GetMessagesResponse, error) {
-	// Verificar se o utilizador é membro da sala
-	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
-	if err != nil || status != "join" {
-		return nil, types.ErrForbidden
-	}
-
-	// Converter o token "from" num stream_ordering (int64)
-	var fromToken int64
-	if from != "" {
-		parsed, err := strconv.ParseInt(from, 10, 64)
-		if err == nil {
-			fromToken = parsed
-		}
-	}
-
-	// Obter os eventos da base de dados usando o Storage
-	eventos, err := s.eventoRepo.GetRoomMessagesHistory(ctx, roomID, fromToken, dir, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get messages history: %w", err)
-	}
-
-	// Determinar o token de paginação 'end' com base no último evento do chunk
-	var endToken string
-	if len(eventos) > 0 {
-		lastEvent := eventos[len(eventos)-1]
-		endToken = strconv.FormatInt(lastEvent.StreamOrdering, 10)
-	} else {
-		endToken = from // Se não houver mais eventos, o fim é igual ao início
-	}
-
-	return &GetMessagesResponse{
-		Start: from,
-		End:   endToken,
-		Chunk: eventos,
-	}, nil
-}
-
-// SendReceipt trata da lógica de negócio para recibos de leitura
-func (s *RoomInteractionService) SendReceipt(ctx context.Context, userID, roomID, receiptType, eventID string) error {
-	// O utilizador só pode enviar recibos de salas onde está ativamente (join)
-	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
-	if err != nil || status != "join" {
-		return types.ErrForbidden
-	}
-
-	// Gravar no PostgreSQL
-	ts := time.Now().UnixMilli()
-	if err := s.eventoRepo.SaveReceipt(ctx, userID, roomID, receiptType, eventID, ts); err != nil {
-		return fmt.Errorf("failed to persist receipt: %w", err)
-	}
-
-	return nil
 }

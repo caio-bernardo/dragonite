@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"log"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -73,9 +72,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendJoin)))
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
-	mux.HandleFunc("GET /_matrix/federation/v1/state_ids/{roomId}", h.getStateIDs)
-	mux.HandleFunc("GET /_matrix/federation/v1/backfill/{roomId}", h.getBackfill)
-	mux.HandleFunc("POST /_matrix/federation/v1/get_missing_events/{roomId}", h.postGetMissingEvents)
 	mux.Handle("GET /_matrix/federation/v1/media/download/{mediaId}", auth(http.HandlerFunc(h.getMediaDownload)))
 }
 
@@ -881,69 +877,6 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 	return nil
 }
 
-// getStateIDs retorna os IDs de estado de uma sala num determinado evento
-// GET /_matrix/federation/v1/state_ids/{roomId}
-// https://spec.matrix.org/v1.18/server-server-api/#get_matrixfederationv1state_idsroomid
-func (h *Handler) getStateIDs(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
-	defer cancel()
-
-	roomID := r.PathValue("roomId")
-	eventID := r.URL.Query().Get("event_id")
-
-	// O spec exige event_id para saber de que momento da história estamos falando
-	if roomID == "" || eventID == "" {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId or event_id")
-		return
-	}
-
-	// Chama o UseCase passando a responsabilidade
-	pduIDs, authIDs, err := h.fedService.GetStateIDsForEvent(ctx, roomID, eventID)
-	if err != nil {
-		log.Printf("[ERROR] GET /state_ids: %v", err)
-		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Event or state not found")
-		return
-	}
-
-	response := StateIDsResponse{
-		PDUIDs:       pduIDs,
-		AuthChainIDs: authIDs,
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// postGetMissingEvents permite a outros servidores recuperar eventos que lhes faltam no DAG
-// POST /_matrix/federation/v1/get_missing_events/{roomId}
-func (h *Handler) postGetMissingEvents(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
-	defer cancel()
-
-	roomID := r.PathValue("roomId")
-	if roomID == "" {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
-		return
-	}
-
-	var req usecase.GetMissingEventsRequest
-	if err := httputil.ParseBody(r, &req); err != nil {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Invalid JSON body")
-		return
-	}
-
-	// Matrix spec: se não enviarem limite, o padrão recomendado é 10
-	if req.Limit <= 0 {
-		req.Limit = 10
-	}
-
-	resp, err := h.fedService.HandleGetMissingEvents(ctx, roomID, req)
-	if err != nil {
-		log.Printf("[ERROR] POST /get_missing_events: %v", err)
-		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to compute missing events")
-		return
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, resp)
 // getMediaDownload serve uma mídia hospedada neste servidor para outro servidor Matrix federado
 // Este é o lado receptor do proxy implementado em FederationService.FetchRemoteMedia.
 func (h *Handler) getMediaDownload(w http.ResponseWriter, r *http.Request) {
