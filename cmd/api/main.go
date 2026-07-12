@@ -11,7 +11,7 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/config"
-	"github.com/caio-bernardo/dragonite/internal/infrastructure/minio"
+	minio_infra "github.com/caio-bernardo/dragonite/internal/infrastructure/minio"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/redis_infra"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
@@ -43,6 +43,7 @@ func main() {
 	// storage implementa TODAS as funções que cada interface requer
 	storage := postgres.NewPostgresStorage(dbPool)
 	notifier := postgres.NewPostgresNotifier(dbPool)
+	go notifier.StartBackgroundListener(ctx)
 
 	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
 
@@ -73,7 +74,7 @@ func main() {
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage)
 	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
 	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver)
-	syncService := usecase.NewSyncService(storage, notifier)
+	syncService := usecase.NewSyncService(storage, storage, storage, notifier)
 	systemService := usecase.NewSystemService(config.ServerName, config.Version, config.PublicKey, config.PrivateKey, config.KeyID, storage)
 	usuarioService := usecase.NewUsuarioService(storage, storage, storage)
 	mediaService := usecase.NewMediaService(config.ServerName, minioStorage, storage, config.MaxUploadBytes, fedService)

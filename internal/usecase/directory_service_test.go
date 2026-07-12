@@ -28,6 +28,10 @@ func (f *fakeCanalStore) GetUserJoinedRooms(ctx context.Context, userID string) 
 	return f.joinedRooms, nil
 }
 
+func (f *fakeCanalStore) GetUserLeftRooms(ctx context.Context, userID string) ([]string, error) {
+	return nil, nil
+}
+
 func (f *fakeCanalStore) GetUserMembership(ctx context.Context, roomID, userID string) (string, error) {
 	return "", nil
 }

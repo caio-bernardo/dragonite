@@ -99,7 +99,7 @@ func (f *FederationService) sendWithRetry(dest string, event domain.Evento) {
 
 	// Backoff exponencial
 	maxRetries := 5
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		err := f.sendTransaction(targetHost, dest, event)
 		if err == nil {
 			return

@@ -209,10 +209,7 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, newToken, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
-
-	// cria a resposta
-	response := encodeEventsIntoResponse(events, newToken)
+	response, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
 
 	httputil.WriteJSON(w, http.StatusOK, response)
 }

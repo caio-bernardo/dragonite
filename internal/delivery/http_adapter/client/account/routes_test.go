@@ -56,6 +56,22 @@ func (m *mockUsuarioStore) AddDirectMessage(ctx context.Context, senderID, recei
 	return nil
 }
 
+func (m *mockUsuarioStore) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (m *mockUsuarioStore) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (m *mockUsuarioStore) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (m *mockUsuarioStore) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 func TestPutAndGetUserAccountData(t *testing.T) {
 	store := newMockUsuarioStore()
 	accSvc := usecase.NewAccountService(store)
@@ -65,7 +81,7 @@ func TestPutAndGetUserAccountData(t *testing.T) {
 	body := bytes.NewBufferString(`{"foo":"bar"}`)
 	req := httptest.NewRequest(http.MethodPut, "/_matrix/client/v3/user/@alice:ex/account_data/com.example.test", body)
 	// chamando o handler diretamente (sem passar pelo mux), então os path values
-	// precisam ser setados manualmente 
+	// precisam ser setados manualmente
 	req.SetPathValue("userId", "@alice:ex")
 	req.SetPathValue("type", "com.example.test")
 	rec := httptest.NewRecorder()

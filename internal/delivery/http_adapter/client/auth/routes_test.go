@@ -56,6 +56,18 @@ func (s *authUserStore) GetStateAndAuthChainIDs(ctx context.Context, roomID stri
 	return nil, nil, nil
 }
 
+func (s *authUserStore) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *authUserStore) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *authUserStore) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 type authDeviceStore struct {
 	upserted *domain.Dispositivo
 }

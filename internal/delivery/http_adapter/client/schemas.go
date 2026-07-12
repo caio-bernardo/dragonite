@@ -1,7 +1,6 @@
 package client
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -57,96 +56,6 @@ type SyncClientRequest struct {
 	FullState   bool             `json:"full_state,omitempty"`
 	SetPresence SetPresence      `json:"set_presence,omitempty"`
 	Timeout     time.Duration    `json:"timeout,omitempty"`
-}
-
-// Resposta GET /_matrix/client/v3/sync
-type SyncClientResponse struct {
-	NextBatch domain.SyncToken `json:"next_batch"`
-	Rooms     RoomsSync        `json:"rooms,omitempty"`
-}
-
-type RoomsSync struct {
-	Join   map[string]JoinedRoom  `json:"join"`
-	Invite map[string]InvitedRoom `json:"invite"`
-	Leave  map[string]LeftRoom    `json:"leave"`
-}
-
-type JoinedRoom struct {
-	State    State    `json:"state,omitempty"`
-	Timeline Timeline `json:"timeline,omitempty"`
-}
-
-type State struct {
-	Events []json.RawMessage `json:"events,omitempty"`
-}
-
-type Timeline struct {
-	Events    []json.RawMessage `json:"events,omitempty"`
-	Limited   bool              `json:"limited,omitempty"`
-	PrevBatch domain.SyncToken  `json:"prev_batch,omitempty"`
-}
-
-type InvitedRoom struct {
-	InviteState InviteState `json:"invate_state"`
-}
-
-type InviteState struct {
-	Events []json.RawMessage `json:"events,omitempty"`
-}
-
-type LeftRoom struct {
-	State    State    `json:"state,omitempty"`
-	Timeline Timeline `json:"timeline,omitempty"`
-}
-
-// Cria uma nova resposta de sincronização com valores padrão.
-func createSyncResponse() SyncClientResponse {
-	return SyncClientResponse{
-		NextBatch: domain.SyncToken{},
-		Rooms: RoomsSync{
-			Join:   make(map[string]JoinedRoom),
-			Invite: make(map[string]InvitedRoom),
-			Leave:  make(map[string]LeftRoom),
-		},
-	}
-}
-
-func encodeEventsIntoResponse(events []domain.Evento, token domain.SyncToken) SyncClientResponse {
-	response := createSyncResponse()
-
-	// Mapa temporário para agrupar os eventos por ID da sala (CanalID)
-	roomTimelines := make(map[string][]json.RawMessage)
-
-	for _, e := range events {
-		clientEv := domain.Evento{
-			Tipo:             e.Tipo,
-			ID:               e.ID,
-			Sender:           e.Sender,
-			OrigemServidorTS: e.OrigemServidorTS,
-			Content:          e.Content,
-			StateKey:         e.StateKey,
-		}
-
-		// Usamos json.RawMessage no SyncResponse para evitar parse redundante
-		eventBytes, err := json.Marshal(clientEv)
-		if err != nil {
-			// ignora falhas
-			continue
-		}
-
-		roomTimelines[e.CanalID] = append(roomTimelines[e.CanalID], eventBytes)
-	}
-
-	for roomID, eventsJSON := range roomTimelines {
-		response.Rooms.Join[roomID] = JoinedRoom{
-			Timeline: Timeline{
-				Events:  eventsJSON,
-				Limited: false,
-			},
-		}
-	}
-	response.NextBatch = token
-	return response
 }
 
 // Essa struct representa o perfil completo

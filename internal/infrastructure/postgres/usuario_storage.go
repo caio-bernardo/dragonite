@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -148,4 +149,86 @@ func (s *PostgresStorage) GetAccountData(ctx context.Context, userID, roomID, ti
 	}
 	acct.Content = json.RawMessage(contentBytes)
 	return &acct, nil
+}
+
+// GetGlobalAccountData retrieves all account_data rows for a user
+func (s *PostgresStorage) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	db := getTxOrPool(ctx, s.db)
+	rows, err := db.Query(ctx,
+		"SELECT fk_id_usuario, id_canal, tipo, content FROM AccountData WHERE fk_id_usuario = $1",
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get global account data: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []domain.AccountData
+	for rows.Next() {
+		var acct domain.AccountData
+		var contentBytes []byte
+		if err := rows.Scan(&acct.IDUsuario, &acct.IDCanal, &acct.Tipo, &contentBytes); err != nil {
+			return nil, fmt.Errorf("failed to scan global account data: %w", err)
+		}
+		acct.Content = json.RawMessage(contentBytes)
+		accounts = append(accounts, acct)
+	}
+	return accounts, nil
+}
+
+// GetAccountDataOfCanal retrieves all account_data rows for a user in one room.
+func (s *PostgresStorage) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	db := getTxOrPool(ctx, s.db)
+	rows, err := db.Query(ctx,
+		"SELECT fk_id_usuario, id_canal, tipo, content FROM AccountData WHERE fk_id_usuario = $1 AND id_canal = $2",
+		userID, canalID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account data of canal: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []domain.AccountData
+	for rows.Next() {
+		var acct domain.AccountData
+		var contentBytes []byte
+		if err := rows.Scan(&acct.IDUsuario, &acct.IDCanal, &acct.Tipo, &contentBytes); err != nil {
+			return nil, fmt.Errorf("failed to scan account data of canal: %w", err)
+		}
+		acct.Content = json.RawMessage(contentBytes)
+		accounts = append(accounts, acct)
+	}
+
+	return accounts, nil
+}
+
+// GetInviteEventsSince retrieves invite membership events for a user after a sync token.
+func (s *PostgresStorage) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	db := getTxOrPool(ctx, s.db)
+	rows, err := db.Query(ctx, `
+		SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key
+		FROM Canal_Membership cm
+		INNER JOIN Evento e ON e.id_evento = cm.id_evento
+		WHERE cm.id_usuario = $1
+		  AND cm.membership_type = 'invite'
+		  AND e.stream_ordering > $2
+		ORDER BY e.stream_ordering ASC
+	`, userID, since.TimelinePosition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get invite events since: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		if err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &event.StreamOrdering, &stateKey); err != nil {
+			return nil, fmt.Errorf("failed to scan invite event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+
+	return eventos, nil
 }
