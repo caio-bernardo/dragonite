@@ -11,7 +11,7 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/config"
-	"github.com/caio-bernardo/dragonite/internal/infrastructure/minio"
+	minio_infra "github.com/caio-bernardo/dragonite/internal/infrastructure/minio"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/redis_infra"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
@@ -43,6 +43,7 @@ func main() {
 	// storage implementa TODAS as funções que cada interface requer
 	storage := postgres.NewPostgresStorage(dbPool)
 	notifier := postgres.NewPostgresNotifier(dbPool)
+	go notifier.StartBackgroundListener(ctx)
 
 	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
 
