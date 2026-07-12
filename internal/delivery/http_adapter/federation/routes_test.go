@@ -142,6 +142,18 @@ func (s *fakeUsuarioStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID
 	return nil, nil, nil
 }
 
+func (s *fakeUsuarioStorage) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *fakeUsuarioStorage) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *fakeUsuarioStorage) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 // helper para construir o handler de federation com profileService injetado
 func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handler {
 	t.Helper()
@@ -518,6 +530,9 @@ func (f *fakeFedCanalStore) GetForwardExtremities(_ context.Context, _ string) (
 	return nil, nil
 }
 func (f *fakeFedCanalStore) SaveAlias(_ context.Context, _, _ string) error { return nil }
+func (f *fakeFedCanalStore) GetUserLeftRooms(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
 
 type fakeFedEventoStore struct {
 	stateEvents []domain.Evento
@@ -560,6 +575,14 @@ func (f *fakeFedEventoStore) GetStateAndAuthChainIDs(ctx context.Context, roomID
 
 func (f *fakeFedEventoStore) SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error {
 	return nil
+}
+
+func (f *fakeFedEventoStore) GetEventsOfCanalSince(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
+func (f *fakeFedEventoStore) GetEventsOfCanalSinceLeft(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
 }
 
 type fakeFedWorkUnit struct{}

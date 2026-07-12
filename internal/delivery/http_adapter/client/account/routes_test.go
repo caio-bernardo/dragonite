@@ -60,6 +60,18 @@ func (m *mockUsuarioStore) GetStateAndAuthChainIDs(ctx context.Context, roomID s
 	return nil, nil, nil
 }
 
+func (m *mockUsuarioStore) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (m *mockUsuarioStore) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (m *mockUsuarioStore) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 func TestPutAndGetUserAccountData(t *testing.T) {
 	store := newMockUsuarioStore()
 	accSvc := usecase.NewAccountService(store)

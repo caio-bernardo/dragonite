@@ -25,7 +25,13 @@ type UsuarioStorage interface {
 	// AccountData operations
 	SaveAccountData(ctx context.Context, account domain.AccountData) error
 	GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error)
+	// Returns global account data for a user
+	GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error)
+	GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error)
+
 	GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error)
+	// Returns the invites received by this user
+	GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
 }
 
 type CanalStorage interface {
@@ -37,6 +43,8 @@ type CanalStorage interface {
 	GetJoinRule(ctx context.Context, roomID string) (string, error)
 	// Get all room ids joined by a user
 	GetUserJoinedRooms(ctx context.Context, userID string) ([]string, error)
+	// Get all room ids the user has left
+	GetUserLeftRooms(ctx context.Context, userID string) ([]string, error)
 	// Get a user membership state
 	GetUserMembership(ctx context.Context, roomID, userID string) (string, error)
 	// Get a room state event ID
@@ -56,6 +64,7 @@ type EventoStorage interface {
 	SaveEvento(ctx context.Context, event *domain.Evento) error
 	GetEvento(ctx context.Context, eventID string) (*domain.Evento, error)
 	GetEventsSince(ctx context.Context, roomID string, limit int, eventIDs []string) ([]domain.Evento, error)
+	GetEventsOfCanalSince(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error)
 	CheckEventoExists(ctx context.Context, eventID string) (bool, error)
 	GetCurrentStateEvents(ctx context.Context, roomID string) ([]domain.Evento, error)
 	GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error)
@@ -63,6 +72,8 @@ type EventoStorage interface {
 	// SaveReceipt atualiza o ponteiro de leitura de um utilizador numa sala
 	SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error
 	GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error)
+	// Get Events since the user has left
+	GetEventsOfCanalSinceLeft(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error)
 }
 
 type DeviceStorage interface {

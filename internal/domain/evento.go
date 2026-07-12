@@ -25,3 +25,10 @@ type Evento struct {
 	Signatures json.RawMessage `json:"signature"`
 	Unsigned   json.RawMessage `json:"unsigned"` // dados adicionados pelo servidor
 }
+
+type StrippedEvento struct {
+	Tipo     string          `json:"type"`
+	Content  json.RawMessage `json:"content"`
+	StateKey *string         `json:"state_key"`
+	Sender   string          `json:"sender"`
+}

@@ -117,6 +117,27 @@ func (s *PostgresStorage) GetUserJoinedRooms(ctx context.Context, userID string)
 	return roomIDs, nil
 }
 
+func (s *PostgresStorage) GetUserLeftRooms(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.db.Query(ctx,
+		"SELECT id_canal FROM Canal_Membership WHERE id_usuario = $1 AND membership_type = 'leave'",
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get left rooms: %w", err)
+	}
+	defer rows.Close()
+
+	var roomIDs []string
+	for rows.Next() {
+		var roomID string
+		if err := rows.Scan(&roomID); err != nil {
+			return nil, fmt.Errorf("failed to scan room id: %w", err)
+		}
+		roomIDs = append(roomIDs, roomID)
+	}
+
+	return roomIDs, nil
+}
+
 func (s *PostgresStorage) GetUserMembership(ctx context.Context, roomID, userID string) (string, error) {
 	row := s.db.QueryRow(ctx,
 		"SELECT membership_type FROM Canal_Membership WHERE id_usuario = $1 AND id_canal = $2",

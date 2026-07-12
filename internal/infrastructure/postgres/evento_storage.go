@@ -47,6 +47,82 @@ func (s *PostgresStorage) GetSince(ctx context.Context, userID string, since dom
 	return eventos, nil
 }
 
+func (s *PostgresStorage) GetEventsOfCanalSince(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
+	query := `
+		SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key
+		FROM Evento e
+		WHERE e.id_canal = $2
+		  AND e.stream_ordering > $3
+		  AND EXISTS (
+		    SELECT 1
+		    FROM Canal_Membership cm
+		    WHERE cm.id_usuario = $1
+		      AND cm.id_canal = $2
+		      AND cm.membership_type IN ('join', 'invite')
+		  )
+		ORDER BY e.stream_ordering ASC
+	`
+	rows, err := s.db.Query(ctx, query, userID, roomID, since.TimelinePosition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events of canal since: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &event.StreamOrdering, &stateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+
+	return eventos, nil
+}
+
+func (s *PostgresStorage) GetEventsOfCanalSinceLeft(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
+	query := `
+		SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key
+		FROM Evento e
+		WHERE e.id_canal = $2
+		  AND e.stream_ordering > $3
+		  AND EXISTS (
+		    SELECT 1
+		    FROM Canal_Membership cm
+		    WHERE cm.id_usuario = $1
+		      AND cm.id_canal = $2
+		      AND cm.membership_type = 'leave'
+		  )
+		ORDER BY e.stream_ordering ASC
+	`
+	rows, err := s.db.Query(ctx, query, userID, roomID, since.TimelinePosition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events of canal since left: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &event.StreamOrdering, &stateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan left event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+
+	return eventos, nil
+}
+
 func (s *PostgresStorage) GetMaxDepthFromEventos(ctx context.Context, prevEventos []string) (int64, error) {
 	if len(prevEventos) == 0 {
 		return 0, nil
@@ -302,8 +378,12 @@ func (s *PostgresStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID st
 
 func (s *PostgresStorage) GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error) {
 	// Prevenção contra nil slices que o driver do Postgres não gosta no pq.Array
-	if earliestEvents == nil { earliestEvents = []string{} }
-	if latestEvents == nil { latestEvents = []string{} }
+	if earliestEvents == nil {
+		earliestEvents = []string{}
+	}
+	if latestEvents == nil {
+		latestEvents = []string{}
+	}
 
 	query := `
 		WITH RECURSIVE missing_tree AS (

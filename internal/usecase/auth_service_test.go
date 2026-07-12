@@ -50,6 +50,19 @@ func (f *fakeUserStore) AddDirectMessage(ctx context.Context, senderID, receiver
 func (f *fakeUserStore) SaveAccountData(ctx context.Context, account domain.AccountData) error {
 	return nil
 }
+
+func (f *fakeUserStore) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (f *fakeUserStore) GetAccountDataOfCanal(ctx context.Context, userID, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (f *fakeUserStore) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 func (f *fakeUserStore) GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error) {
 	return nil, nil
 }

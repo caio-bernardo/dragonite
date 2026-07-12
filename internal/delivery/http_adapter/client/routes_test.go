@@ -53,6 +53,18 @@ func (s *clientUserStore) GetStateAndAuthChainIDs(ctx context.Context, roomID st
 	return nil, nil, nil
 }
 
+func (s *clientUserStore) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *clientUserStore) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *clientUserStore) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 type clientCanalStore struct {
 	joinedRooms []string
 }
@@ -106,6 +118,10 @@ func (c *clientCanalStore) SaveAlias(ctx context.Context, roomID, fullAlias stri
 }
 
 func (c *clientCanalStore) GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error) {
+	return nil, nil
+}
+
+func (c *clientCanalStore) GetUserLeftRooms(ctx context.Context, userID string) ([]string, error) {
 	return nil, nil
 }
 
