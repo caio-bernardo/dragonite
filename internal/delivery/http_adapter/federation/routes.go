@@ -72,10 +72,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendJoin)))
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
-	mux.HandleFunc("GET /_matrix/federation/v1/state_ids/{roomId}", h.getStateIDs)
-	mux.HandleFunc("GET /_matrix/federation/v1/backfill/{roomId}", h.getBackfill)
-	mux.HandleFunc("POST /_matrix/federation/v1/get_missing_events/{roomId}", h.postGetMissingEvents)
+	mux.Handle("GET /_matrix/federation/v1/state_ids/{roomId}", auth(http.HandlerFunc(h.getStateIDs)))
+	mux.Handle("GET /_matrix/federation/v1/backfill/{roomId}", auth(http.HandlerFunc(h.getBackfill)))
+	mux.Handle("POST /_matrix/federation/v1/get_missing_events/{roomId}", auth(http.HandlerFunc(h.postGetMissingEvents)))
 	mux.Handle("GET /_matrix/federation/v1/media/download/{mediaId}", auth(http.HandlerFunc(h.getMediaDownload)))
+	mux.Handle("GET /_matrix/federation/v1/state/{roomId}", auth(http.HandlerFunc(h.getRoomState)))
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -878,6 +879,33 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 		return fmt.Errorf("signature verification failed")
 	}
 	return nil
+}
+
+// getRoomState retorna um snapshot de um estado de uma sala num determinado evento
+// GET /_matrix/federation/v1/state/{roomId}
+// https://spec.matrix.org/v1.18/server-server-api/#get_matrixfederationv1stateroomid
+func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request){
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	// Parâmetros requeridos pela especificação
+	roomID := r.PathValue("roomId") // Path
+	eventID := r.URL.Query().Get("event_id") // Query
+
+	if roomID == "" || eventID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId or event_id")
+		return
+	}
+
+	response, err := h.fedService.GetRoomStateSnapShot(ctx, roomID, eventID)
+
+	if err != nil {
+		log.Printf("[ERROR] GET /state: %v", err)
+		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "State not found")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // getStateIDs retorna os IDs de estado de uma sala num determinado evento

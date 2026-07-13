@@ -313,6 +313,102 @@ func (s *PostgresStorage) GetRoomMessagesHistory(ctx context.Context, roomID str
 	return eventos, nil
 }
 
+func (s *PostgresStorage) GetStateAndAuthChainEvents(ctx context.Context, roomID string, userID string) ([]domain.Evento, []domain.Evento, error) {
+
+	// Obter estado atual da sala (PDUs)
+
+	stateQuery := `
+		SELECT e.id_evento, e.tipo, e.id_canal, e.sender,
+		e.origin_server_ts, e.content, e.state_key, e.stream_ordering,
+		e.prev_eventos, e.auth_eventos, e.depth
+		FROM Canal_Estado_Atual cea
+		JOIN Evento e ON e.id_evento = cea.id_evento
+		WHERE cea.id_canal = $1
+	`
+	rows, err := s.db.Query(ctx, stateQuery, roomID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query state failed: %w", err)
+	}
+	defer rows.Close()
+
+	var pdus []domain.Evento
+	var pduIDs []string
+
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		err := rows.Scan(
+			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
+			&event.OrigemServidorTS, &event.Content, &stateKey,
+			&event.StreamOrdering, pq.Array(&event.PrevEventos),
+			pq.Array(&event.AuthEventos), &event.Depth,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to scan state event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		pdus = append(pdus, event)
+		pduIDs = append(pduIDs, event.ID)
+	}
+	rows.Close()
+
+	if len(pduIDs) == 0 {
+		return []domain.Evento{}, []domain.Evento{}, nil
+	}
+	authChainQuery := `
+			WITH RECURSIVE auth_tree AS (
+				-- Caso Base: Os auth_events diretamente referenciados pelos PDU_IDs encontrados
+				SELECT unnest(auth_eventos) as auth_id
+				FROM Evento
+				WHERE id_evento = ANY($1)
+
+				UNION
+
+				-- Passo Recursivo: Mergulhar na árvore de autorização
+				SELECT unnest(e.auth_eventos)
+				FROM Evento e
+				INNER JOIN auth_tree at ON e.id_evento = at.auth_id
+				WHERE e.auth_eventos IS NOT NULL
+			)
+			-- O DISTINCT garante que não devolvemos eventos duplicados (ex: m.room.create)
+			SELECT DISTINCT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts,
+			                e.content, e.state_key, e.stream_ordering, e.prev_eventos, e.auth_eventos, e.depth
+			FROM Evento e
+			JOIN auth_tree at ON e.id_evento = at.auth_id
+			WHERE at.auth_id IS NOT NULL;
+		`
+
+	authRows, err := s.db.Query(ctx, authChainQuery, pq.Array(pduIDs))
+	if err != nil {
+		return nil, nil, fmt.Errorf("query auth chain events failed: %w", err)
+	}
+
+	defer authRows.Close()
+	var authChain []domain.Evento
+	for authRows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+
+		err := authRows.Scan(
+			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
+			&event.OrigemServidorTS, &event.Content, &stateKey,
+			&event.StreamOrdering, pq.Array(&event.PrevEventos),
+			pq.Array(&event.AuthEventos), &event.Depth,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to scan auth event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		authChain = append(authChain, event)
+	}
+
+	return pdus, authChain, nil
+}
+
 func (s *PostgresStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
 	// Ir buscar os PDU IDs (Os eventos de estado propriamente ditos)
 

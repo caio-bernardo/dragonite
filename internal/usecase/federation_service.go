@@ -33,6 +33,11 @@ type GetMissingEventsResponse struct {
 	Events []domain.Evento `json:"events"`
 }
 
+type RoomStateResponse struct {
+	AuthChain []domain.Evento `json:"auth_chain"`
+	PDUs      []domain.Evento `json:"pdus"`
+}
+
 type BackfillResult struct {
 	Origin         string          `json:"origin"`
 	OriginServerTS int64           `json:"origin_server_ts"`
@@ -544,6 +549,28 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 		return nil
 	})
 	return err
+}
+
+// GetRoomStateSnapShot retorna um snapshot do estado da sala no momento do eventID
+func (f *FederationService) GetRoomStateSnapShot(ctx context.Context, roomID, eventID string) (*RoomStateResponse, error) {
+
+	// Verifica se evento existe
+	exists, err := f.eventoStore.CheckEventoExists(ctx, eventID)
+	if err != nil || !exists {
+		return nil, fmt.Errorf("event not found or db error: %w", err)
+	}
+
+	// Pede snapshot
+	pdus, authChain, err := f.eventoStore.GetStateAndAuthChainEvents(ctx, roomID, eventID)
+	if err != nil{
+		return nil, fmt.Errorf("failed to fetch state snapshot: %w", err)
+	}
+
+	return &RoomStateResponse{
+		PDUs: pdus,
+		AuthChain: authChain,
+	}, nil
+
 }
 
 // GetStateIDsForEvent recolhe o estado da sala no momento do eventID e a sua cadeia de autorização
