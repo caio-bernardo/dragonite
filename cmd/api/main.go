@@ -73,7 +73,7 @@ func main() {
 	accountService := usecase.NewAccountService(storage)
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage)
 	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
-	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver)
+	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver, fedService)
 	syncService := usecase.NewSyncService(storage, storage, storage, notifier)
 	systemService := usecase.NewSystemService(config.ServerName, config.Version, config.PublicKey, config.PrivateKey, config.KeyID, storage)
 	usuarioService := usecase.NewUsuarioService(storage, storage, storage)

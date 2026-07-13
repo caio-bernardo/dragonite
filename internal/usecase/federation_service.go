@@ -671,3 +671,102 @@ func (r *remoteMediaReadCloser) Read(p []byte) (int, error) {
 func (r *remoteMediaReadCloser) Close() error {
 	return r.resp.Body.Close()
 }
+
+type OutboundMakeJoinResponse struct {
+	RoomVersion string        `json:"room_version"`
+	Event       domain.Evento `json:"event"`
+}
+
+type OutboundSendJoinResponse struct {
+	StateEvents []domain.Evento `json:"state"`
+	AuthChain   []domain.Evento `json:"auth_chain"`
+}
+
+// MakeJoinCall hits GET /_matrix/federation/v1/make_join/{roomId}/{userId} on a remote host
+func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, roomID, userID string) (*domain.Evento, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	// Supported versions your server handles (e.g., "11" as seen in canal_storage.go)
+	uri := fmt.Sprintf("/_matrix/federation/v1/make_join/%s/%s?ver=11", roomID, userID)
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "GET", uri, remoteServer, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign make_join request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected make_join: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var makeJoinResult OutboundMakeJoinResponse
+	if err := json.NewDecoder(resp.Body).Decode(&makeJoinResult); err != nil {
+		return nil, err
+	}
+
+	return &makeJoinResult.Event, nil
+}
+
+// SendJoinCall hits PUT /_matrix/federation/v1/send_join/{roomId}/{eventId}
+func (f *FederationService) SendJoinCall(ctx context.Context, remoteServer, roomID string, signedEvent *domain.Evento) (*OutboundSendJoinResponse, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := fmt.Sprintf("/_matrix/federation/v1/send_join/%s/%s", roomID, signedEvent.ID)
+
+	payloadBytes, err := util.CanonicalJSON(signedEvent)
+	if err != nil {
+		return nil, err
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "PUT", uri, remoteServer, signedEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign send_join request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected send_join: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var sendJoinResult OutboundSendJoinResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sendJoinResult); err != nil {
+		return nil, err
+	}
+
+	return &sendJoinResult, nil
+}

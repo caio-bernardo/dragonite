@@ -198,7 +198,23 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 	_ = httputil.ParseBody(r, &req)
 
 	if util.IsRemoteUser(roomID, h.serverName) {
-		log.Fatal("TODO: implement RemoteJoin")
+		// Extract the remote server name from the room handle (e.g. extracts "example.com" from "#public:example.com")
+		remoteServer := util.ExtractDomainFromUserID(roomID)
+		if remoteServer == "" {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "Could not resolve remote server from room identifier")
+			return
+		}
+
+		// Execute the Outbound Federated Join
+		err := h.roomMembershipService.JoinRemoteRoom(ctx, userID, roomID, remoteServer)
+		if err != nil {
+			log.Printf("[ERROR] POST /rooms/%s/join (Federated): %v", roomID, err)
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to federate join remote room")
+			return
+		}
+
+		httputil.WriteJSON(w, http.StatusOK, JoinRoomResponse{RoomID: roomID})
+		return
 	}
 
 	err := h.roomMembershipService.JoinLocalRoom(ctx, userID, roomID)
