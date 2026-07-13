@@ -626,7 +626,7 @@ func newTestHandlerWithFed(t *testing.T, canalStore *fakeFedCanalStore, eventoSt
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{})
+	fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{}, nil)
 	return NewHandler(sys, fedSvc, nil, nil, nil, nil, nil, "example.com")
 }
 
