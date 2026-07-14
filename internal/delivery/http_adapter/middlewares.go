@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -60,13 +61,13 @@ func (s *Server) TokenBearerMiddleware(next http.Handler) http.Handler {
 
 		//Verifica se o token está presente no header
 		if authHeader == "" {
-			http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "No access token was specified for the request")
 			return
 		}
 
 		//Confere se está no formato correto ("Bearer <token>")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Invalid authorization format")
 			return
 		}
 
@@ -83,7 +84,7 @@ func (s *Server) TokenBearerMiddleware(next http.Handler) http.Handler {
 			return s.jwtSecret, nil
 		})
 		if err != nil || !token.Valid {
-			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Invalid or expired token")
 			return
 		}
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
+	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
@@ -53,12 +54,17 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/client/v3/createRoom", authMiddleware(http.HandlerFunc(h.postCreateRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/join", authMiddleware(http.HandlerFunc(h.postJoinRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/leave", authMiddleware(http.HandlerFunc(h.postLeaveRoom)))
+	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/invite", authMiddleware(http.HandlerFunc(h.postInviteRoom)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}", authMiddleware(http.HandlerFunc(h.putSendEvent)))
 	// com stateKey (ex: /state/m.room.member/@alice:server.com)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	// sem stateKey — stateKey vazio, trailing slash opcional (ex: /state/m.room.name ou /state/m.room.name/)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
+	// GET com stateKey, sem stateKey (default "") e com trailing slash opcional
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}", authMiddleware(http.HandlerFunc(h.getRoomState)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.getRoomState)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.getRoomState)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
 	// marcação de leitura (mock)
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
@@ -261,6 +267,67 @@ func (h *Handler) postLeaveRoom(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
 
+// postInviteRoom convida um usuário a participar da sala especificada.
+// POST /_matrix/client/v3/rooms/{roomId}/invite
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#post_matrixclientv3roomsroomidinvite
+func (h *Handler) postInviteRoom(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing or invalid access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing roomId")
+		return
+	}
+
+	var req InviteRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		if err == types.ErrNoBodyFound {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "No request body")
+		} else {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Invalid request body")
+		}
+		return
+	}
+
+	if req.UserID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "user_id is required")
+		return
+	}
+	if util.ExtractDomainFromUserID(req.UserID) == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invalid user_id")
+		return
+	}
+
+	var reason string
+	if req.Reason != nil {
+		reason = *req.Reason
+	}
+
+	err := h.roomMembershipService.InviteUser(ctx, roomID, userID, req.UserID, reason)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, err.Error())
+			return
+		}
+		if errors.Is(err, usecase.ErrIncompatibleRoomVersion) {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_UNSUPPORTED_ROOM_VERSION, "Invitee's homeserver does not support this room version")
+			return
+		}
+		log.Printf("[ERROR] POST /rooms/%s/invite: %v", roomID, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to invite user")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+}
+
 // putSendEvent envia um room event para a sala especificada.
 // PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}
 // Ref: https://spec.matrix.org/v1.18/client-server-api/#put_matrixclientv3roomsroomidsendeventtypetxnid
@@ -386,6 +453,83 @@ func (h *Handler) putStateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Return Success
 	httputil.WriteJSON(w, http.StatusOK, StateEventResponse{EventID: eventID})
+}
+
+// getRoomState busca o conteúdo de um state event específico da sala
+// GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	// 1. Extract Identity
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	// 2. Extract Path Parameters
+	roomID := r.PathValue("roomId")
+	eventType := r.PathValue("eventType")
+	stateKey := r.PathValue("stateKey") // pode vir vazio, o default da spec é ""
+
+	if roomID == "" || eventType == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing required path parameters")
+		return
+	}
+
+	// 3. Query Param: format (content | event), default "content"
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "content"
+	}
+	if format != "content" && format != "event" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "format must be 'content' or 'event'")
+		return
+	}
+
+	// 4. Execute Business Logic
+	evento, err := h.roomInteractions.GetStateEventContent(ctx, roomID, userID, eventType, stateKey)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You aren't a member of the room and weren't previously a member of the room")
+			return
+		}
+		if errors.Is(err, usecase.ErrStateNotFound) {
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "The room has no state with the given type or key")
+			return
+		}
+		log.Printf("[ERROR] GET /rooms/%s/state/%s/%s: %v", roomID, eventType, stateKey, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room state")
+		return
+	}
+
+	// 5. Return Success
+	if format == "event" {
+		httputil.WriteJSON(w, http.StatusOK, toClientStateEvent(evento))
+		return
+	}
+	// format == "content" (default): apenas o conteúdo bruto do evento
+	httputil.WriteJSON(w, http.StatusOK, evento.Content)
+}
+
+// toClientStateEvent converte um domain.Evento no formato client-facing usado por ?format=event
+func toClientStateEvent(ev *domain.Evento) StateEventFull {
+	var stateKey string
+	if ev.StateKey != nil {
+		stateKey = *ev.StateKey
+	}
+	return StateEventFull{
+		Content:        ev.Content,
+		EventID:        ev.ID,
+		OriginServerTS: ev.OrigemServidorTS,
+		RoomID:         ev.CanalID,
+		Sender:         ev.Sender,
+		StateKey:       stateKey,
+		Type:           ev.Tipo,
+		Unsigned:       ev.Unsigned,
+	}
 }
 
 // getRoomMessages retorna o histórico de eventos de uma sala

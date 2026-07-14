@@ -30,20 +30,20 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [X] GET /\_matrix/client/v3/login
 - [X] POST /\_matrix/client/v3/logout
 - [X] POST /\_matrix/client/v3/refresh
-- [ ] GET /\_matrix/client/v3/account/whoami
-- [ ] GET /\_matrix/client/v3/capabilities
+- [X] GET /\_matrix/client/v3/account/whoami
+- [x] GET /\_matrix/client/v3/capabilities *(mock — retorna só `m.room_versions` com default/available "11")*
 - [x] POST /\_matrix/client/v3/user/{userId}/filter *(mock — retorna `filter_id` fixo, sem aplicar filtro de verdade)*
 - [x] GET /\_matrix/client/v3/sync
 - [X] POST /\_matrix/client/v3/createRoom 
-- [ ] POST /\_matrix/client/v3/rooms/{roomId}/join *(só join local — join de sala remota via federação ainda é `log.Fatal("TODO: implement RemoteJoin")`, precisa corrigir antes de produção)*
+- [X] POST /\_matrix/client/v3/rooms/{roomId}/join
 - [X] POST /\_matrix/client/v3/rooms/{roomId}/leave 
-- [ ] POST /\_matrix/client/v3/rooms/{roomId}/invite 
+- [X] POST /\_matrix/client/v3/rooms/{roomId}/invite 
 - [x] PUT /\_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId} 
 - [x] PUT /\_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey} 
 - [ ] GET /\_matrix/client/v3/rooms/{roomId}/state
 - [ ] GET /\_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}
 - [ ] GET /\_matrix/client/v3/rooms/{roomId}/event/{eventId}
-- [ ] GET /\_matrix/client/v3/rooms/{roomId}/messages
+- [X] GET /\_matrix/client/v3/rooms/{roomId}/messages
 - [ ] GET /\_matrix/client/v3/rooms/{roomId}/members
 - [ ] GET /\_matrix/client/v3/rooms/{roomId}/joined_members
 - [x] GET /\_matrix/client/v3/profile/{userId} 
@@ -66,7 +66,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [ ] POST /\_matrix/client/v3/rooms/{roomId}/ban — *moderação: impedir que um usuário específico volte a entrar.*
 - [ ] POST /\_matrix/client/v3/rooms/{roomId}/unban — *reverter um ban.*
 - [ ] PUT /\_matrix/client/v3/rooms/{roomId}/redact/{eventId}/{txnId} — *apagar/editar mensagens enviadas por engano ou ofensivas.*
-- [ ] GET /\_matrix/client/v3/joined_rooms — *atalho para listar salas do usuário sem precisar de um `/sync` completo.*
+- [X] GET /\_matrix/client/v3/joined_rooms — *atalho para listar salas do usuário sem precisar de um `/sync` completo.*
 - [ ] GET/PUT/DELETE /\_matrix/client/v3/directory/room/{roomAlias} — *resolver/gerenciar alias amigáveis de sala (ex: #geral:dragonite.com).*
 - [X] GET/POST /\_matrix/client/v3/publicRooms — *permitir que o usuário descubra salas públicas direto pelo cliente (versão client-side do que já existe na federação).*
 - [ ] GET /\_matrix/client/v1/media/config — *informar ao cliente o tamanho máximo de upload, evitando uploads fadados a falhar.*
@@ -102,10 +102,10 @@ resiliente (incluindo reconciliação de estado após partições de rede).
 - [x] GET /\_matrix/key/v2/server
 - [x] PUT /\_matrix/federation/v1/send/{txnId}
 - [x] GET /\_matrix/federation/v1/backfill/{roomId}
-- [ ] POST /\_matrix/federation/v1/get_missing_events/{roomId} *(reconciliação de lacunas na DAG após partição/reconexão)*
+- [X] POST /\_matrix/federation/v1/get_missing_events/{roomId} *(reconciliação de lacunas na DAG após partição/reconexão)*
 - [x] GET /\_matrix/federation/v1/event/{eventId}
 - [ ] GET /\_matrix/federation/v1/state/{roomId} *(recuperar estado completo de uma sala ao entrar via federação)*
-- [ ] GET /\_matrix/federation/v1/state_ids/{roomId} *(mesma coisa, mas só IDs — usado para resolução de estado eficiente)*
+- [X] GET /\_matrix/federation/v1/state_ids/{roomId} *(mesma coisa, mas só IDs — usado para resolução de estado eficiente)*
 - [x] GET /\_matrix/federation/v1/make_join/{roomId}/{userId}
 - [x] PUT /\_matrix/federation/v2/send_join/{roomId}/{eventId}
 - [x] GET /\_matrix/federation/v1/make_leave/{roomId}/{userId}

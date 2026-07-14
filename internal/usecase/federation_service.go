@@ -537,7 +537,7 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 				return fmt.Errorf("failed to upsert current state: %w", err)
 			}
 
-			if err := f.canalStore.UpsertMembership(txCtx, roomID, inviteEvent.Sender, "invite", inviteEvent.ID); err != nil {
+			if err := f.canalStore.UpsertMembership(txCtx, roomID, *inviteEvent.StateKey, "invite", inviteEvent.ID); err != nil {
 				return fmt.Errorf("failed to upsert membership: %w", err)
 			}
 		}
@@ -739,6 +739,97 @@ func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, room
 	}
 
 	return &makeJoinResult.Event, nil
+}
+
+// OutboundInviteRequest é o payload enviado a PUT /_matrix/federation/v2/invite/{roomId}/{eventId}
+// em um homeserver remoto, no mesmo formato esperado por federation.InviteRequest
+type OutboundInviteRequest struct {
+	RoomVersion     string                  `json:"room_version"`
+	Event           json.RawMessage         `json:"event"`
+	InviteRoomState []domain.StrippedEvento `json:"invite_room_state"`
+}
+
+type OutboundInviteResponse struct {
+	Event json.RawMessage `json:"event"`
+}
+
+// SendInviteCall chama PUT /_matrix/federation/v2/invite/{roomId}/{eventId} no homeserver
+// remoto do convidado, pedindo que ele valide e contra-assine o evento de convite antes
+// deste ser aceito como válido na sala
+func (f *FederationService) SendInviteCall(ctx context.Context, remoteServer, roomID, roomVersion string, inviteEvent *domain.Evento, inviteRoomState []domain.StrippedEvento) (*domain.Evento, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := fmt.Sprintf("/_matrix/federation/v2/invite/%s/%s", roomID, inviteEvent.ID)
+
+	eventBytes, err := util.CanonicalJSON(inviteEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize invite event: %w", err)
+	}
+
+	if inviteRoomState == nil {
+		inviteRoomState = []domain.StrippedEvento{}
+	}
+
+	payload := OutboundInviteRequest{
+		RoomVersion:     roomVersion,
+		Event:           eventBytes,
+		InviteRoomState: inviteRoomState,
+	}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize invite payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "PUT", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign invite request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		// Tenta identificar o caso específico de versão de sala incompatível (400 M_UNSUPPORTED_ROOM_VERSION)
+		var apiErr struct {
+			Errcode string `json:"errcode"`
+		}
+		_ = json.Unmarshal(body, &apiErr)
+		if apiErr.Errcode == "M_UNSUPPORTED_ROOM_VERSION" {
+			return nil, ErrIncompatibleRoomVersion
+		}
+
+		return nil, fmt.Errorf("remote server rejected invite: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var inviteResult OutboundInviteResponse
+	if err := json.NewDecoder(resp.Body).Decode(&inviteResult); err != nil {
+		return nil, fmt.Errorf("failed to decode invite response: %w", err)
+	}
+
+	var signedEvent domain.Evento
+	if err := json.Unmarshal(inviteResult.Event, &signedEvent); err != nil {
+		return nil, fmt.Errorf("failed to parse signed invite event: %w", err)
+	}
+
+	return &signedEvent, nil
 }
 
 // SendJoinCall hits PUT /_matrix/federation/v1/send_join/{roomId}/{eventId}

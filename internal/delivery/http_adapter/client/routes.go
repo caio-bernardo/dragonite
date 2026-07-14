@@ -90,10 +90,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
+	// salas em que o usuário está atualmente
+	mux.Handle("GET /_matrix/client/v3/joined_rooms", authMiddleware(http.HandlerFunc(h.getJoinedRooms)))
 	// regras de notificação (mock)
 	mux.Handle("GET /_matrix/client/v3/pushrules/", authMiddleware(http.HandlerFunc(h.getPushRules)))
 	// upload de filtro (mock)
 	mux.Handle("POST /_matrix/client/v3/user/{userId}/filter", authMiddleware(http.HandlerFunc(h.uploadFilter)))
+	// capacidades (mock)
+	mux.Handle("GET /_matrix/client/v3/capabilities", authMiddleware(http.HandlerFunc(h.getCapabilities)))
 
 }
 
@@ -129,6 +133,23 @@ func (h *Handler) uploadFilter(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, FilterUploadResponse{
 		FilterID: "0",
 	})
+}
+
+// getCapabilities é um mock que retorna apenas a capability obrigatória pela spec (m.room_versions)
+// GET /_matrix/client/v3/capabilities
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3capabilities
+func (h *Handler) getCapabilities(w http.ResponseWriter, r *http.Request) {
+	response := CapabilitiesResponse{
+		Capabilities: Capabilities{
+			RoomVersions: RoomVersionsCapability{
+				Default: "11",
+				Available: map[string]string{
+					"11": "stable",
+				},
+			},
+		},
+	}
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // searchUsers realiza a busca de usuários no diretório.
@@ -179,6 +200,23 @@ func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, UserSearchResponse{
 		Limited: limited,
 		Results: results,
+	})
+}
+
+// getJoinedRooms retorna a lista de salas em que o usuário autenticado tem membership "join"
+// GET /_matrix/client/v3/joined_rooms
+func (h *Handler) getJoinedRooms(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(types.UserIDKey).(string)
+
+	roomIDs, err := h.roomMembership.GetJoinedRooms(r.Context(), userID)
+	if err != nil {
+		log.Printf("[ERROR] GET /joined_rooms: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to fetch joined rooms")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, JoinedRoomsResponse{
+		JoinedRooms: roomIDs,
 	})
 }
 

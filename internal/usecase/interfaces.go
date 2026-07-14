@@ -47,6 +47,8 @@ type CanalStorage interface {
 	GetUserLeftRooms(ctx context.Context, userID string) ([]string, error)
 	// Get a user membership state
 	GetUserMembership(ctx context.Context, roomID, userID string) (string, error)
+	// Get membership state + whether a record exists at all (distingue "nunca foi membro" de "leave")
+	GetUserMembershipRecord(ctx context.Context, roomID, userID string) (string, bool, error)
 	// Get a room state event ID
 	GetStateEventID(ctx context.Context, canalID string, stateType, stateKey string) (string, bool)
 	UpsertMembership(ctx context.Context, roomID, userID, membership, id_evento string) error

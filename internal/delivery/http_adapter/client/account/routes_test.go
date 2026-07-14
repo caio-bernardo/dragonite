@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
@@ -70,6 +72,63 @@ func (m *mockUsuarioStore) GetAccountDataOfCanal(ctx context.Context, userID str
 
 func (m *mockUsuarioStore) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
 	return nil, nil
+}
+
+func TestWhoami(t *testing.T) {
+	store := newMockUsuarioStore()
+	accSvc := usecase.NewAccountService(store)
+	h := NewHandler(accSvc)
+
+	// simula o que o TokenBearerMiddleware faria após validar o token
+	ctx := context.WithValue(context.Background(), types.UserIDKey, "@alice:example.org")
+	ctx = context.WithValue(ctx, types.DeviceIDKey, "ABC1234")
+
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/account/whoami", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	h.whoami(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp WhoamiResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.UserID != "@alice:example.org" {
+		t.Fatalf("unexpected user_id: %s", resp.UserID)
+	}
+	if resp.DeviceID != "ABC1234" {
+		t.Fatalf("unexpected device_id: %s", resp.DeviceID)
+	}
+	if resp.IsGuest {
+		t.Fatalf("expected is_guest false by default")
+	}
+}
+
+func TestWhoamiMissingUserID(t *testing.T) {
+	store := newMockUsuarioStore()
+	accSvc := usecase.NewAccountService(store)
+	h := NewHandler(accSvc)
+
+	// contexto sem user_id, simulando um bug/uso indevido sem passar pelo middleware
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/account/whoami", nil)
+	rec := httptest.NewRecorder()
+
+	h.whoami(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp httputil.MatrixErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if errResp.ErrCode != httputil.M_UNKNOWN_TOKEN {
+		t.Fatalf("expected M_UNKNOWN_TOKEN, got %s", errResp.ErrCode)
+	}
 }
 
 func TestPutAndGetUserAccountData(t *testing.T) {

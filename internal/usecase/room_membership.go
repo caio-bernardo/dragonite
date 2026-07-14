@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
@@ -87,6 +89,20 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	_ = s.fedService.QueueOutgoing(ctx, *leaveEvent)
 
 	return nil
+}
+
+// GetJoinedRooms retorna os IDs das salas em que o usuário tem membership "join"
+// Usado por GET /_matrix/client/v3/joined_rooms
+func (s *RoomMembershipService) GetJoinedRooms(ctx context.Context, userID string) ([]string, error) {
+	roomIDs, err := s.canalRepo.GetUserJoinedRooms(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if roomIDs == nil {
+		// evita serializar "null" no JSON quando o usuário não está em nenhuma sala
+		roomIDs = []string{}
+	}
+	return roomIDs, nil
 }
 
 func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomID string) error {
@@ -292,4 +308,189 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 	})
 
 	return err
+}
+
+// InviteUser convida um usuário (local ou remoto) a participar da sala, criando um evento
+// m.room.member com membership "invite". Para convidados remotos, o evento é assinado
+// localmente e enviado ao homeserver do convidado via
+func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterID, inviteeID, reason string) error {
+	// 1. O inviter precisa estar atualmente na sala
+	inviterStatus, err := s.canalRepo.GetUserMembership(ctx, roomID, inviterID)
+	if err != nil {
+		return fmt.Errorf("failed to check inviter membership: %w", err)
+	}
+	if inviterStatus != "join" {
+		return fmt.Errorf("%w: inviter is not currently in the room", types.ErrForbidden)
+	}
+
+	// 2. O convidado não pode já ser membro nem estar banido
+	inviteeStatus, err := s.canalRepo.GetUserMembership(ctx, roomID, inviteeID)
+	if err != nil {
+		return fmt.Errorf("failed to check invitee membership: %w", err)
+	}
+	if inviteeStatus == "ban" {
+		return fmt.Errorf("%w: user is banned from the room", types.ErrForbidden)
+	}
+	if inviteeStatus == "join" {
+		return fmt.Errorf("%w: user is already a member of the room", types.ErrForbidden)
+	}
+
+	// 3. Power level do inviter precisa ser suficiente para convidar
+	if err := s.checkInvitePowerLevel(ctx, roomID, inviterID); err != nil {
+		return err
+	}
+
+	// 4. Monta o evento m.room.member (invite)
+	content := map[string]any{"membership": "invite"}
+	if reason != "" {
+		content["reason"] = reason
+	}
+	inviteEvent := newBaseEvent(roomID, inviterID, string(types.Member), &inviteeID, content)
+
+	// 5. Resolve dependências do DAG
+	prevs, auths, err := s.authRuleResolver.ResolveEventDependencies(ctx, roomID, inviterID, "m.room.member", &inviteeID)
+	if err != nil {
+		return err
+	}
+	inviteEvent.PrevEventos = prevs
+	inviteEvent.AuthEventos = auths
+	maxDepth, err := s.eventRepo.GetMaxDepthFromEventos(ctx, prevs)
+	if err != nil {
+		return fmt.Errorf("failed to get event depth: %w", err)
+	}
+	inviteEvent.Depth = maxDepth + 1
+
+	eventID, err := util.HashMatrixEvent(inviteEvent)
+	if err != nil {
+		return fmt.Errorf("failed to hash invite event: %w", err)
+	}
+	inviteEvent.ID = eventID
+
+	// 6. Se o convidado for de um servidor remoto, executa o handshake da federação:
+	// assina localmente, envia ao homeserver dele para contra-assinatura e usa o evento
+	// resultante (com ambas as assinaturas) como definitivo
+	if util.IsRemoteUser(inviteeID, s.fedService.serverName) {
+		sigs, err := util.SignMatrixEvent(inviteEvent, s.fedService.serverName, s.fedService.keyID, s.fedService.privateKey)
+		if err != nil {
+			return fmt.Errorf("failed to sign invite event: %w", err)
+		}
+		inviteEvent.Signatures = sigs
+
+		canal, err := s.canalRepo.GetByID(ctx, roomID)
+		if err != nil {
+			return fmt.Errorf("failed to look up room: %w", err)
+		}
+		roomVersion := "11"
+		if canal != nil && canal.Versao != "" {
+			roomVersion = canal.Versao
+		}
+
+		remoteServer := util.ExtractDomainFromUserID(inviteeID)
+		signedEvent, err := s.fedService.SendInviteCall(ctx, remoteServer, roomID, roomVersion, inviteEvent, s.buildInviteRoomState(ctx, roomID))
+		if err != nil {
+			return fmt.Errorf("federated invite failed: %w", err)
+		}
+		inviteEvent = signedEvent
+	}
+
+	// 7. Persistência transacional
+	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
+		if err := s.eventRepo.SaveEvento(txCtx, inviteEvent); err != nil {
+			return err
+		}
+		if err := s.canalRepo.UpdateForwardExtremities(txCtx, roomID, inviteEvent.ID, inviteEvent.PrevEventos); err != nil {
+			return err
+		}
+		if err := s.canalRepo.UpsertCurrentState(txCtx, roomID, "m.room.member", inviteeID, inviteEvent.ID); err != nil {
+			return err
+		}
+		if err := s.canalRepo.UpsertMembership(txCtx, roomID, inviteeID, "invite", inviteEvent.ID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// 8. Notifica os demais servidores já participantes da sala sobre o novo convite
+	_ = s.fedService.QueueOutgoing(ctx, *inviteEvent)
+
+	return nil
+}
+
+// checkInvitePowerLevel verifica se o inviter tem nível de poder suficiente (m.room.power_levels.invite).
+func (s *RoomMembershipService) checkInvitePowerLevel(ctx context.Context, roomID, inviterID string) error {
+	eventID, found := s.canalRepo.GetStateEventID(ctx, roomID, "m.room.power_levels", "")
+	if !found {
+		// Sem power_levels definido: usa os defaults da spec (invite = 0), sempre permitido
+		return nil
+	}
+
+	plEvent, err := s.eventRepo.GetEvento(ctx, eventID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch power levels event: %w", err)
+	}
+
+	var pl struct {
+		Invite       *int           `json:"invite"`
+		UsersDefault *int           `json:"users_default"`
+		Users        map[string]int `json:"users"`
+	}
+	if err := json.Unmarshal(plEvent.Content, &pl); err != nil {
+		return fmt.Errorf("failed to parse power levels content: %w", err)
+	}
+
+	inviteLevel := 0
+	if pl.Invite != nil {
+		inviteLevel = *pl.Invite
+	}
+	usersDefault := 0
+	if pl.UsersDefault != nil {
+		usersDefault = *pl.UsersDefault
+	}
+
+	inviterLevel := usersDefault
+	if lvl, ok := pl.Users[inviterID]; ok {
+		inviterLevel = lvl
+	}
+
+	if inviterLevel < inviteLevel {
+		return fmt.Errorf("%w: insufficient power level to invite", types.ErrForbidden)
+	}
+	return nil
+}
+
+// buildInviteRoomState monta um subconjunto ("stripped state") do estado atual da sala,
+// enviado junto ao convite federado para que o servidor do convidado possa exibir uma
+// prévia da sala (nome, tópico, avatar etc.) antes mesmo dele aceitar o convite
+func (s *RoomMembershipService) buildInviteRoomState(ctx context.Context, roomID string) []domain.StrippedEvento {
+	relevantTypes := []string{
+		"m.room.create",
+		"m.room.join_rules",
+		"m.room.canonical_alias",
+		"m.room.name",
+		"m.room.avatar",
+		"m.room.topic",
+		"m.room.encryption",
+	}
+
+	stripped := make([]domain.StrippedEvento, 0, len(relevantTypes))
+	for _, t := range relevantTypes {
+		eventID, found := s.canalRepo.GetStateEventID(ctx, roomID, t, "")
+		if !found {
+			continue
+		}
+		ev, err := s.eventRepo.GetEvento(ctx, eventID)
+		if err != nil || ev == nil {
+			continue
+		}
+		stripped = append(stripped, domain.StrippedEvento{
+			Tipo:     ev.Tipo,
+			Content:  ev.Content,
+			StateKey: ev.StateKey,
+			Sender:   ev.Sender,
+		})
+	}
+	return stripped
 }

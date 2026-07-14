@@ -223,6 +223,31 @@ func TestUploadFilterInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestGetCapabilities(t *testing.T) {
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/capabilities", nil)
+
+	h.getCapabilities(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp CapabilitiesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Capabilities.RoomVersions.Default != "11" {
+		t.Fatalf("expected default room version 11, got %s", resp.Capabilities.RoomVersions.Default)
+	}
+	if stability, ok := resp.Capabilities.RoomVersions.Available["11"]; !ok || stability != "stable" {
+		t.Fatalf("expected room version 11 to be stable, got %v", resp.Capabilities.RoomVersions.Available)
+	}
+}
+
 func TestSearchUsersOK(t *testing.T) {
 	display := "Alice"
 	avatar := "mxc://example.com/a"

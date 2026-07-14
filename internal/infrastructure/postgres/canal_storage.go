@@ -155,6 +155,26 @@ func (s *PostgresStorage) GetUserMembership(ctx context.Context, roomID, userID 
 	return membership, nil
 }
 
+// GetUserMembershipRecord retorna o membership_type do usuário na sala e um booleano indicando
+// se existe algum registro de membership (diferente de GetUserMembership, que trata "sem registro"
+// como "leave")
+func (s *PostgresStorage) GetUserMembershipRecord(ctx context.Context, roomID, userID string) (string, bool, error) {
+	row := s.db.QueryRow(ctx,
+		"SELECT membership_type FROM Canal_Membership WHERE id_usuario = $1 AND id_canal = $2",
+		userID, roomID)
+
+	var membership string
+	err := row.Scan(&membership)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("failed to get membership record: %w", err)
+	}
+
+	return membership, true, nil
+}
+
 func (s *PostgresStorage) GetStateEventID(ctx context.Context, canalID string, stateType, stateKey string) (string, bool) {
 	row := s.db.QueryRow(ctx,
 		"SELECT id_evento FROM Canal_Estado_Atual WHERE id_canal = $1 AND tipo = $2 AND state_key = $3",
