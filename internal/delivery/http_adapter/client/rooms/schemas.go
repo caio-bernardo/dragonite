@@ -1,5 +1,7 @@
 package rooms
 
+import "encoding/json"
+
 // GET /publicRooms
 
 // PublicRoomChunk representa uma entrada na listagem de salas públicas.
@@ -102,4 +104,18 @@ type StateEventResponse struct {
 type InviteRequest struct {
 	UserID string  `json:"user_id"`
 	Reason *string `json:"reason,omitempty"`
+}
+
+// GET /rooms/{roomId}/state/{eventType}/{stateKey}
+
+// StateEventFull é o corpo de resposta quando ?format=event é usado .
+type StateEventFull struct {
+	Content        json.RawMessage `json:"content"`
+	EventID        string          `json:"event_id"`
+	OriginServerTS int64           `json:"origin_server_ts"`
+	RoomID         string          `json:"room_id"`
+	Sender         string          `json:"sender"`
+	StateKey       string          `json:"state_key"`
+	Type           string          `json:"type"`
+	Unsigned       json.RawMessage `json:"unsigned,omitempty"`
 }

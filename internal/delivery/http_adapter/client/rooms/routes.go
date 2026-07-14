@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
+	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
@@ -60,6 +61,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// sem stateKey — stateKey vazio, trailing slash opcional (ex: /state/m.room.name ou /state/m.room.name/)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
+	// GET com stateKey, sem stateKey (default "") e com trailing slash opcional
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}", authMiddleware(http.HandlerFunc(h.getRoomState)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.getRoomState)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.getRoomState)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
 	// marcação de leitura (mock)
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
@@ -448,6 +453,83 @@ func (h *Handler) putStateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Return Success
 	httputil.WriteJSON(w, http.StatusOK, StateEventResponse{EventID: eventID})
+}
+
+// getRoomState busca o conteúdo de um state event específico da sala
+// GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	// 1. Extract Identity
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	// 2. Extract Path Parameters
+	roomID := r.PathValue("roomId")
+	eventType := r.PathValue("eventType")
+	stateKey := r.PathValue("stateKey") // pode vir vazio, o default da spec é ""
+
+	if roomID == "" || eventType == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing required path parameters")
+		return
+	}
+
+	// 3. Query Param: format (content | event), default "content"
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "content"
+	}
+	if format != "content" && format != "event" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "format must be 'content' or 'event'")
+		return
+	}
+
+	// 4. Execute Business Logic
+	evento, err := h.roomInteractions.GetStateEventContent(ctx, roomID, userID, eventType, stateKey)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You aren't a member of the room and weren't previously a member of the room")
+			return
+		}
+		if errors.Is(err, usecase.ErrStateNotFound) {
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "The room has no state with the given type or key")
+			return
+		}
+		log.Printf("[ERROR] GET /rooms/%s/state/%s/%s: %v", roomID, eventType, stateKey, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room state")
+		return
+	}
+
+	// 5. Return Success
+	if format == "event" {
+		httputil.WriteJSON(w, http.StatusOK, toClientStateEvent(evento))
+		return
+	}
+	// format == "content" (default): apenas o conteúdo bruto do evento
+	httputil.WriteJSON(w, http.StatusOK, evento.Content)
+}
+
+// toClientStateEvent converte um domain.Evento no formato client-facing usado por ?format=event
+func toClientStateEvent(ev *domain.Evento) StateEventFull {
+	var stateKey string
+	if ev.StateKey != nil {
+		stateKey = *ev.StateKey
+	}
+	return StateEventFull{
+		Content:        ev.Content,
+		EventID:        ev.ID,
+		OriginServerTS: ev.OrigemServidorTS,
+		RoomID:         ev.CanalID,
+		Sender:         ev.Sender,
+		StateKey:       stateKey,
+		Type:           ev.Tipo,
+		Unsigned:       ev.Unsigned,
+	}
 }
 
 // getRoomMessages retorna o histórico de eventos de uma sala

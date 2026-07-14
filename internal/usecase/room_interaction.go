@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -291,4 +292,33 @@ func (s *RoomInteractionService) SendReceipt(ctx context.Context, userID, roomID
 	}
 
 	return nil
+}
+
+// ErrStateNotFound é retornado quando não existe state event com o tipo/chave pedidos
+var ErrStateNotFound = errors.New("state event not found")
+
+func (s *RoomInteractionService) GetStateEventContent(ctx context.Context, roomID, userID, eventType, stateKey string) (*domain.Evento, error) {
+	status, found, err := s.canalRepo.GetUserMembershipRecord(ctx, roomID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	// 403: nunca teve nenhum registro de membership nessa sala
+	if !found || (status != "join" && status != "leave") {
+		return nil, types.ErrForbidden
+	}
+
+	// TODO: quando status == "leave", buscar o estado histórico no momento em que o
+	// usuário saiu (via GetStateAndAuthChainIDs com o event_id do leave), em vez do
+	// estado atual da sala. Requer expor o event_id da membership via CanalStorage
+	// (já persistido por UpsertMembership, mas não exposto para leitura hoje)
+	eventID, stateFound := s.canalRepo.GetStateEventID(ctx, roomID, eventType, stateKey)
+	if !stateFound {
+		return nil, ErrStateNotFound
+	}
+
+	evento, err := s.eventoRepo.GetEvento(ctx, eventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch state event: %w", err)
+	}
+	return evento, nil
 }
