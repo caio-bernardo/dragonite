@@ -82,35 +82,34 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 
-	// 3. Resolve DAG Dependencies (The Timeline and the VIP Pass)
-	prevs, auths, err := s.authRuleResolver.ResolveEventDependencies(ctx, params.RoomID, params.UserID, params.EventType, &params.StateKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve DAG dependencies: %w", err)
-	}
-	newEvent.PrevEventos = prevs
-	newEvent.AuthEventos = auths
-
-	maxDepth, err := s.eventoRepo.GetMaxDepthFromEventos(ctx, prevs)
-	if err != nil {
-		return "", fmt.Errorf("failed to get event depth: %w", err)
-	}
-	newEvent.Depth = maxDepth + 1
-
-	// 4. Cryptographic Hashing
-	eventID, err := util.HashMatrixEvent(newEvent)
-	if err != nil {
-		return "", fmt.Errorf("failed to hash event: %w", err)
-	}
-	newEvent.ID = eventID
-
-	signJSON, err := util.SignMatrixEvent(newEvent, s.serverName, s.keyID, s.privateKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to sign event: %w", err)
-	}
-	newEvent.Signatures = signJSON
-
-	// 5. ATOMIC DATABASE TRANSACTION (The 3-Step State Update)
+	// ATOMIC DATABASE TRANSACTION (The 3-Step State Update)
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
+		// 3. Resolve DAG Dependencies (The Timeline and the VIP Pass)
+		prevs, auths, err := s.authRuleResolver.ResolveEventDependencies(ctx, params.RoomID, params.UserID, params.EventType, &params.StateKey)
+		if err != nil {
+			return fmt.Errorf("failed to resolve DAG dependencies: %w", err)
+		}
+		newEvent.PrevEventos = prevs
+		newEvent.AuthEventos = auths
+
+		maxDepth, err := s.eventoRepo.GetMaxDepthFromEventos(ctx, prevs)
+		if err != nil {
+			return fmt.Errorf("failed to get event depth: %w", err)
+		}
+		newEvent.Depth = maxDepth + 1
+
+		// 4. Cryptographic Hashing
+		eventID, err := util.HashMatrixEvent(newEvent)
+		if err != nil {
+			return fmt.Errorf("failed to hash event: %w", err)
+		}
+		newEvent.ID = eventID
+
+		signJSON, err := util.SignMatrixEvent(newEvent, s.serverName, s.keyID, s.privateKey)
+		if err != nil {
+			return fmt.Errorf("failed to sign event: %w", err)
+		}
+		newEvent.Signatures = signJSON
 		// A. Save the historical event payload to the DAG
 		if err := s.eventoRepo.SaveEvento(txCtx, newEvent); err != nil {
 			return err
@@ -140,7 +139,7 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 	// Queue the state change to be pushed to remote servers
 	_ = s.fedService.QueueOutgoing(ctx, *newEvent)
 
-	return eventID, nil
+	return newEvent.ID, nil
 }
 
 func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventParams) (string, error) {
@@ -165,35 +164,36 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 
-	// 3. Resolve DAG Dependencies (The VIP Pass and the Timeline)
-	prevs, auths, err := s.authRuleResolver.ResolveEventDependencies(ctx, params.RoomID, params.SenderID, params.EventType, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve DAG dependencies: %w", err)
-	}
-	newEvent.PrevEventos = prevs
-	newEvent.AuthEventos = auths
-
-	maxDepth, err := s.eventoRepo.GetMaxDepthFromEventos(ctx, prevs)
-	if err != nil {
-		return "", fmt.Errorf("failed to get event depth: %w", err)
-	}
-	newEvent.Depth = maxDepth + 1
-
-	// 4. Cryptographic Hashing
-	eventID, err := util.HashMatrixEvent(newEvent)
-	if err != nil {
-		return "", fmt.Errorf("failed to hash event: %w", err)
-	}
-	newEvent.ID = eventID
-
-	signJSON, err := util.SignMatrixEvent(newEvent, s.serverName, s.keyID, s.privateKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to sign event: %w", err)
-	}
-	newEvent.Signatures = signJSON
-
-	// 5. ATOMIC DATABASE TRANSACTION
+	// ATOMIC DATABASE TRANSACTION
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
+		// 3. Resolve DAG Dependencies (The VIP Pass and the Timeline)
+		prevs, auths, err := s.authRuleResolver.ResolveEventDependencies(ctx, params.RoomID, params.SenderID, params.EventType, nil)
+		if err != nil {
+			return fmt.Errorf("failed to resolve DAG dependencies: %w", err)
+		}
+		newEvent.PrevEventos = prevs
+		newEvent.AuthEventos = auths
+
+		maxDepth, err := s.eventoRepo.GetMaxDepthFromEventos(ctx, prevs)
+		if err != nil {
+			return fmt.Errorf("failed to get event depth: %w", err)
+		}
+		newEvent.Depth = maxDepth + 1
+
+		// 4. Cryptographic Hashing
+		eventID, err := util.HashMatrixEvent(newEvent)
+		if err != nil {
+			return fmt.Errorf("failed to hash event: %w", err)
+		}
+		newEvent.ID = eventID
+
+		signJSON, err := util.SignMatrixEvent(newEvent, s.serverName, s.keyID, s.privateKey)
+		if err != nil {
+			return fmt.Errorf("failed to sign event: %w", err)
+		}
+
+		newEvent.Signatures = signJSON
+
 		// A. Save the event payload
 		if err := s.eventoRepo.SaveEvento(txCtx, newEvent); err != nil {
 			return err
@@ -219,7 +219,7 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 	// Queue the event to be pushed to remote servers
 	_ = s.fedService.QueueOutgoing(ctx, *newEvent)
 
-	return eventID, nil
+	return newEvent.ID, nil
 }
 
 func (s *RoomInteractionService) RetrieveSingleEvent(ctx context.Context, eventID string) (*domain.Evento, error) {

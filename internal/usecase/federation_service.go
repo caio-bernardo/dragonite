@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +39,10 @@ type BackfillResult struct {
 	PDUs           []domain.Evento `json:"pdus"`
 }
 
+type StateResolver interface {
+	Resolve(ctx context.Context, input domain.StateResolutionInput) (domain.StateMap, error)
+}
+
 type FederationService struct {
 	// TODO: trocar esse channel por uma fila apropria. Mas por enquanto mantém
 	outboundQueue    chan domain.Evento
@@ -47,9 +53,10 @@ type FederationService struct {
 	eventoStore      EventoStorage
 	uow              WorkUnit
 	authRuleResolver AuthRuleResolver
+	stateResolver    StateResolver
 }
 
-func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKey, canalStore CanalStorage, eventoStore EventoStorage, uow WorkUnit) *FederationService {
+func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKey, canalStore CanalStorage, eventoStore EventoStorage, uow WorkUnit, stateResolver StateResolver) *FederationService {
 	fs := &FederationService{
 		outboundQueue: make(chan domain.Evento),
 		serverName:    serverName,
@@ -58,6 +65,7 @@ func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKe
 		canalStore:    canalStore,
 		eventoStore:   eventoStore,
 		uow:           uow,
+		stateResolver: stateResolver,
 	}
 
 	// nova thread que vai rodar o worker
@@ -241,10 +249,25 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 		}
 	}
 
+	// State Res Algo. Resolve o estado do canal no ponto em que o novo evento se conecta ao grafo.
+	resolvedStateBefore, err := f.resolveStateAtIngestion(ctx, pdu.CanalID, pdu.PrevEventos)
+	if err != nil {
+		return fmt.Errorf("falha no consenso do estado (State Res v2): %w", err)
+	}
+
 	// Verificar as regras do Grafo
 	_, _, err = f.authRuleResolver.ResolveEventDependencies(ctx, pdu.CanalID, pdu.Sender, pdu.Tipo, pdu.StateKey)
 	if err != nil {
 		return fmt.Errorf("falha ao resolver dependências: %w", err)
+	}
+
+	// Se o novo evento é um evento de estado, atualizamos o mapa
+	resolvedStateAfter := make(domain.StateMap)
+	maps.Copy(resolvedStateAfter, resolvedStateBefore)
+
+	if pdu.StateKey != nil {
+		newTuple := domain.NewStateTuple(pdu.Tipo, pdu.StateKey)
+		resolvedStateAfter[newTuple] = pdu.ID
 	}
 
 	// Inserir de modo seguro no DAG
@@ -360,13 +383,7 @@ func (f *FederationService) MakeJoin(ctx context.Context, roomID, userID string,
 	}
 
 	// Verifica compatibilidade de versão
-	versionOK := false
-	for _, v := range supportedVersions {
-		if v == canal.Versao {
-			versionOK = true
-			break
-		}
-	}
+	versionOK := slices.Contains(supportedVersions, canal.Versao)
 	if !versionOK {
 		return nil, ErrIncompatibleRoomVersion
 	}
@@ -860,4 +877,91 @@ func (f *FederationService) SendJoinCall(ctx context.Context, remoteServer, room
 	}
 
 	return &sendJoinResult, nil
+}
+
+// resolveStateAtIngestion calculates the consensus state map across all prev_events of an incoming PDU.
+func (f *FederationService) resolveStateAtIngestion(ctx context.Context, roomID string, prevEvents []string) (domain.StateMap, error) {
+	if len(prevEvents) == 0 {
+		// Genesis event (m.room.create); room state is empty
+		return make(domain.StateMap), nil
+	}
+
+	stateSets := make([]domain.StateMap, 0, len(prevEvents))
+	allAuthEventIDs := make(map[string]bool)
+	allStateEventIDs := make(map[string]bool)
+
+	// 1. Fetch state IDs and auth chains for each branch in prev_events
+	for _, prevID := range prevEvents {
+		stateIDs, authIDs, err := f.eventoStore.GetStateAndAuthChainIDs(ctx, roomID, prevID)
+		if err != nil {
+			log.Printf("[Federation] Could not fetch state for branch %s: %v", prevID, err)
+			continue
+		}
+
+		branchState := make(domain.StateMap)
+		for _, id := range stateIDs {
+			allStateEventIDs[id] = true
+			// We will map tuples once we load the Evento objects below
+		}
+		for _, id := range authIDs {
+			allAuthEventIDs[id] = true
+		}
+
+		// Store temporary list of state IDs for this branch
+		// We need to fetch the actual events to get their (type, state_key) tuples
+		stateSets = append(stateSets, branchState)
+	}
+
+	if len(stateSets) == 0 {
+		return nil, fmt.Errorf("could not resolve state from any prev_events")
+	}
+
+	// 2. Batch load all state and auth events from database
+	eventsMap := make(map[string]*domain.Evento)
+	authEventsMap := make(map[string]*domain.Evento)
+
+	for id := range allStateEventIDs {
+		if ev, err := f.eventoStore.GetEvento(ctx, id); err == nil && ev != nil {
+			eventsMap[id] = ev
+		}
+	}
+	for id := range allAuthEventIDs {
+		if ev, err := f.eventoStore.GetEvento(ctx, id); err == nil && ev != nil {
+			authEventsMap[id] = ev
+		}
+	}
+
+	// 3. Populate the StateMap tuples for each branch now that we have the Evento objects
+	for idx, prevID := range prevEvents {
+		if idx >= len(stateSets) {
+			break
+		}
+		stateIDs, _, _ := f.eventoStore.GetStateAndAuthChainIDs(ctx, roomID, prevID)
+		for _, id := range stateIDs {
+			if ev, exists := eventsMap[id]; exists {
+				tuple := domain.NewStateTuple(ev.Tipo, ev.StateKey)
+				stateSets[idx][tuple] = id
+			}
+		}
+	}
+
+	// 4. If only 1 branch exists or all branches are identical, no resolution needed!
+	if len(stateSets) == 1 {
+		return stateSets[0], nil
+	}
+
+	// 5. Execute State Resolution v2 across the conflicting branches
+	input := domain.StateResolutionInput{
+		RoomID:        roomID,
+		StateSets:     stateSets,
+		AuthEventsMap: authEventsMap,
+		EventsMap:     eventsMap,
+	}
+
+	resolvedState, err := f.stateResolver.Resolve(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("state resolution v2 failed: %w", err)
+	}
+
+	return resolvedState, nil
 }
