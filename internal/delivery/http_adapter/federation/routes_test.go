@@ -493,6 +493,11 @@ type fakeFedCanalStore struct {
 	joinRule   string
 	servers    []string
 	membership string
+	upsertedMemberships []fedUpsertMembershipRecord
+}
+
+type fedUpsertMembershipRecord struct {
+	RoomID, UserID, Membership, EventID string
 }
 
 func (f *fakeFedCanalStore) GetByID(_ context.Context, _ string) (*domain.Canal, error) {
@@ -504,7 +509,10 @@ func (f *fakeFedCanalStore) GetJoinRule(_ context.Context, _ string) (string, er
 func (f *fakeFedCanalStore) GetCanalParticipatingServers(_ context.Context, _ string) ([]string, error) {
 	return f.servers, nil
 }
-func (f *fakeFedCanalStore) UpsertMembership(_ context.Context, _, _, _, _ string) error { return nil }
+func (f *fakeFedCanalStore) UpsertMembership(_ context.Context, roomID, userID, membership, eventID string) error {
+	f.upsertedMemberships = append(f.upsertedMemberships, fedUpsertMembershipRecord{roomID, userID, membership, eventID})
+	return nil
+}
 func (f *fakeFedCanalStore) UpsertCurrentState(_ context.Context, _, _, _, _ string) error {
 	return nil
 }
@@ -516,6 +524,9 @@ func (f *fakeFedCanalStore) GetUserJoinedRooms(_ context.Context, _ string) ([]s
 }
 func (f *fakeFedCanalStore) GetUserMembership(_ context.Context, _, _ string) (string, error) {
 	return f.membership, nil
+}
+func (f *fakeFedCanalStore) GetUserMembershipRecord(_ context.Context, _, _ string) (string, bool, error) {
+	return "", false, nil
 }
 func (f *fakeFedCanalStore) GetStateEventID(_ context.Context, _, _, _ string) (string, bool) {
 	return "", false
@@ -1074,6 +1085,75 @@ func TestPutInvite_HappyPath(t *testing.T) {
 
 	if _, ok := sigs["dragonite.com"]; !ok {
 		t.Errorf("expected response to be signed by dragonite.com, got sigs: %v", sigs)
+	}
+}
+
+func TestPutInvite_HappyPath_UpsertsInviteeMembership(t *testing.T) {
+	remotePub, remotePriv, _ := ed25519.GenerateKey(rand.Reader)
+	remoteKeyID := "ed25519:remote"
+	remoteOrigin := "remote.com"
+	invitee := "@bob:dragonite.com"
+
+	canal := &domain.Canal{ID: "!room:remote.com", Versao: "11"}
+	eventoStore := &fakeFedEventoStore{}
+	canalStore := &fakeFedCanalStore{
+		canal:    canal,
+		joinRule: "invite",
+		servers:  []string{"remote.com"},
+	}
+
+	h := newTestHandlerWithFed(t, canalStore, eventoStore)
+	h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+		return remoteKeyID, remotePub, nil
+	}
+
+	server := newMuxServer("PUT /_matrix/federation/v2/invite/{roomId}/{eventId}", h.putInvite)
+	defer server.Close()
+
+	eventMap := map[string]any{
+		"type":      "m.room.member",
+		"sender":    "@alice:" + remoteOrigin,
+		"state_key": invitee,
+		"room_id":   canal.ID,
+		"content":   map[string]interface{}{"membership": "invite"},
+	}
+
+	canonical, _ := util.CanonicalJSON(eventMap)
+	sigBytes := ed25519.Sign(remotePriv, canonical)
+	eventMap["signatures"] = map[string]interface{}{
+		remoteOrigin: map[string]interface{}{
+			remoteKeyID: base64.RawStdEncoding.EncodeToString(sigBytes),
+		},
+	}
+
+	eventRaw, _ := json.Marshal(eventMap)
+	body, _ := json.Marshal(InviteRequest{RoomVersion: "11", Event: eventRaw})
+
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/invite/%21room%3Aremote.com/%24invite%3Aremote.com",
+		strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyBytes)
+	}
+
+	if len(canalStore.upsertedMemberships) != 1 {
+		t.Fatalf("expected 1 upserted membership, got %d", len(canalStore.upsertedMemberships))
+	}
+	got := canalStore.upsertedMemberships[0]
+	if got.UserID != invitee {
+		t.Errorf("expected invitee %s to receive the invite membership, got %s (regressão do bug sender/state_key)", invitee, got.UserID)
+	}
+	if got.Membership != "invite" {
+		t.Errorf("expected membership 'invite', got %s", got.Membership)
 	}
 }
 

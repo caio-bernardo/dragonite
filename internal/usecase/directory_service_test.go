@@ -36,6 +36,10 @@ func (f *fakeCanalStore) GetUserMembership(ctx context.Context, roomID, userID s
 	return "", nil
 }
 
+func (f *fakeCanalStore) GetUserMembershipRecord(ctx context.Context, roomID, userID string) (string, bool, error) {
+	return "", false, nil
+}
+
 func (f *fakeCanalStore) GetStateEventID(ctx context.Context, canalID string, stateType, stateKey string) (string, bool) {
 	return "", false
 }

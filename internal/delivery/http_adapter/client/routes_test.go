@@ -89,6 +89,10 @@ func (c *clientCanalStore) GetUserMembership(ctx context.Context, roomID, userID
 	return "", nil
 }
 
+func (c *clientCanalStore) GetUserMembershipRecord(ctx context.Context, roomID, userID string) (string, bool, error) {
+	return "", false, nil
+}
+
 func (c *clientCanalStore) GetStateEventID(ctx context.Context, canalID string, stateType, stateKey string) (string, bool) {
 	return "", false
 }
