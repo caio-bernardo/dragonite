@@ -64,6 +64,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/event/{eventId}", authMiddleware(http.HandlerFunc(h.getEvent)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state", authMiddleware(http.HandlerFunc(h.getRoomState)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -516,4 +517,39 @@ func (h *Handler) getEvent(w http.ResponseWriter, r *http.Request) {
 
 	// Matrix devolve o evento diretamente no corpo da resposta
 	httputil.WriteJSON(w, http.StatusOK, evento)
+}
+
+// getRoomState devolve o estado atual completo de uma sala
+// GET /_matrix/client/v3/rooms/{roomId}/state
+func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	// Autenticação (obtém o User ID do token)
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
+		return
+	}
+
+	// Passa a responsabilidade ao UseCase
+	stateEvents, err := h.roomInteractions.GetRoomState(ctx, userID, roomID)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not in this room")
+			return
+		}
+		log.Printf("[ERROR] GET /state: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room state")
+		return
+	}
+
+	// A especificação Matrix determina que a resposta é diretamente o JSON Array
+	httputil.WriteJSON(w, http.StatusOK, stateEvents)
 }

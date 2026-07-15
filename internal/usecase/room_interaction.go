@@ -313,3 +313,25 @@ func (s *RoomInteractionService) GetEvent(ctx context.Context, userID, roomID, e
 
 	return evento, nil
 }
+
+// GetRoomState retorna todos os eventos de estado atuais da sala, se o utilizador tiver permissão
+func (s *RoomInteractionService) GetRoomState(ctx context.Context, userID, roomID string) ([]domain.Evento, error) {
+
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return nil, types.ErrForbidden
+	}
+
+
+	stateEvents, err := s.eventoRepo.GetCurrentStateEvents(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch current state events: %w", err)
+	}
+
+
+	if stateEvents == nil {
+		stateEvents = []domain.Evento{}
+	}
+
+	return stateEvents, nil
+}
