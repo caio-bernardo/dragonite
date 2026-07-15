@@ -32,6 +32,12 @@ type GetMessagesResponse struct {
 	State []domain.Evento `json:"state,omitempty"`
 }
 
+// JoinedMemberProfile representa o formato exigido pelo endpoint joined_members
+type JoinedMemberProfile struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	AvatarURL   *string `json:"avatar_url,omitempty"`
+}
+
 func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService *FederationService, authRuleResolver *AuthRuleResolver, uow WorkUnit, serverName, keyID string, privateKey ed25519.PrivateKey) *RoomInteractionService {
 	return &RoomInteractionService{
 		canalRepo:        canalRepo,
@@ -292,6 +298,150 @@ func (s *RoomInteractionService) SendReceipt(ctx context.Context, userID, roomID
 	}
 
 	return nil
+}
+
+func (s *RoomInteractionService) GetEvent(ctx context.Context, userID, roomID, eventID string) (*domain.Evento, error) {
+
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return nil, types.ErrForbidden
+	}
+
+
+	evento, err := s.eventoRepo.GetEvento(ctx, eventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch event: %w", err)
+	}
+
+
+	if evento.CanalID != roomID {
+		return nil, types.ErrForbidden
+	}
+
+	return evento, nil
+}
+
+// GetRoomState retorna todos os eventos de estado atuais da sala, se o utilizador tiver permissão
+func (s *RoomInteractionService) GetRoomState(ctx context.Context, userID, roomID string) ([]domain.Evento, error) {
+
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return nil, types.ErrForbidden
+	}
+
+
+	stateEvents, err := s.eventoRepo.GetCurrentStateEvents(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch current state events: %w", err)
+	}
+
+
+	if stateEvents == nil {
+		stateEvents = []domain.Evento{}
+	}
+
+	return stateEvents, nil
+}
+
+// GetRoomMembers retorna a lista de membros filtrada
+func (s *RoomInteractionService) GetRoomMembers(ctx context.Context, userID, roomID, membershipFilter, notMembershipFilter string) ([]domain.Evento, error) {
+	// Verificar permissões (se está na sala)
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return nil, types.ErrForbidden
+	}
+
+	// Obter todos os eventos m.room.member da base de dados
+	memberEvents, err := s.eventoRepo.GetRoomMemberEvents(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch member events: %w", err)
+	}
+
+	// Se não houver filtros, devolvemos tudo
+	if membershipFilter == "" && notMembershipFilter == "" {
+		if memberEvents == nil {
+			return []domain.Evento{}, nil
+		}
+		return memberEvents, nil
+	}
+
+	// Filtrar na memória (interpretar o JSON do Content para extrair a "membership")
+	var filtered []domain.Evento
+	for _, ev := range memberEvents {
+		var content map[string]interface{}
+
+		// Converte a string de Content para um Mapa
+		if err := json.Unmarshal([]byte(ev.Content), &content); err != nil {
+			continue // Se houver erro de formatação num evento, ignoramos
+		}
+
+		memState, ok := content["membership"].(string)
+		if !ok {
+			continue // Ignora eventos que não tenham o campo membership
+		}
+
+		// Aplica a lógica dos filtros exigidos pela especificação
+		if membershipFilter != "" && memState != membershipFilter {
+			continue
+		}
+		if notMembershipFilter != "" && memState == notMembershipFilter {
+			continue
+		}
+
+		filtered = append(filtered, ev)
+	}
+
+	if filtered == nil {
+		return []domain.Evento{}, nil
+	}
+
+	return filtered, nil
+}
+
+// GetJoinedMembers retorna o mapa de membros atualmente juntos (join) na sala
+func (s *RoomInteractionService) GetJoinedMembers(ctx context.Context, userID, roomID string) (map[string]JoinedMemberProfile, error) {
+	// Verificar permissões
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return nil, types.ErrForbidden
+	}
+
+	// Buscar eventos m.room.member da sala (reutilizando a nossa função super rápida!)
+	memberEvents, err := s.eventoRepo.GetRoomMemberEvents(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch member events: %w", err)
+	}
+
+	// Inicializar o mapa (A key será o User ID)
+	joined := make(map[string]JoinedMemberProfile)
+
+	for _, ev := range memberEvents {
+		// Proteção: Eventos de membro devem ter sempre um state_key (que é o ID do utilizador alvo)
+		if ev.StateKey == nil || *ev.StateKey == "" {
+			continue
+		}
+
+		// Estrutura inline para extrair apenas o que precisamos do Content do evento
+		var content struct {
+			Membership  string  `json:"membership"`
+			DisplayName *string `json:"displayname"` // Nota: no evento Matrix, escreve-se tudo junto
+			AvatarURL   *string `json:"avatar_url"`
+		}
+
+		if err := json.Unmarshal([]byte(ev.Content), &content); err != nil {
+			continue // Ignora lixo ou JSON malformado
+		}
+
+		// Apenas nos interessam os membros que estão com membership == "join"
+		if content.Membership == "join" {
+			joined[*ev.StateKey] = JoinedMemberProfile{
+				DisplayName: content.DisplayName,
+				AvatarURL:   content.AvatarURL,
+			}
+		}
+	}
+
+  return joined, nil
 }
 
 // ErrStateNotFound é retornado quando não existe state event com o tipo/chave pedidos

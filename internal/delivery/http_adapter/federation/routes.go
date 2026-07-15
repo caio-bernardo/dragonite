@@ -72,10 +72,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendJoin)))
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
-	mux.HandleFunc("GET /_matrix/federation/v1/state_ids/{roomId}", h.getStateIDs)
-	mux.HandleFunc("GET /_matrix/federation/v1/backfill/{roomId}", h.getBackfill)
-	mux.HandleFunc("POST /_matrix/federation/v1/get_missing_events/{roomId}", h.postGetMissingEvents)
+	mux.Handle("GET /_matrix/federation/v1/state_ids/{roomId}", auth(http.HandlerFunc(h.getStateIDs)))
+	mux.Handle("GET /_matrix/federation/v1/backfill/{roomId}", auth(http.HandlerFunc(h.getBackfill)))
+	mux.Handle("POST /_matrix/federation/v1/get_missing_events/{roomId}", auth(http.HandlerFunc(h.postGetMissingEvents)))
 	mux.Handle("GET /_matrix/federation/v1/media/download/{mediaId}", auth(http.HandlerFunc(h.getMediaDownload)))
+	mux.Handle("GET /_matrix/federation/v1/state/{roomId}", auth(http.HandlerFunc(h.getRoomState)))
+	mux.Handle("GET /_matrix/federation/v1/rooms/{roomId}/members", auth(http.HandlerFunc(h.getRoomMembers)))
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -880,6 +882,33 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 	return nil
 }
 
+// getRoomState retorna um snapshot de um estado de uma sala num determinado evento
+// GET /_matrix/federation/v1/state/{roomId}
+// https://spec.matrix.org/v1.18/server-server-api/#get_matrixfederationv1stateroomid
+func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request){
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	// Parâmetros requeridos pela especificação
+	roomID := r.PathValue("roomId") // Path
+	eventID := r.URL.Query().Get("event_id") // Query
+
+	if roomID == "" || eventID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId or event_id")
+		return
+	}
+
+	response, err := h.fedService.GetRoomStateSnapShot(ctx, roomID, eventID)
+
+	if err != nil {
+		log.Printf("[ERROR] GET /state: %v", err)
+		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "State not found")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
 // getStateIDs retorna os IDs de estado de uma sala num determinado evento
 // GET /_matrix/federation/v1/state_ids/{roomId}
 // https://spec.matrix.org/v1.18/server-server-api/#get_matrixfederationv1state_idsroomid
@@ -967,6 +996,49 @@ func (h *Handler) getMediaDownload(w http.ResponseWriter, r *http.Request) {
 	defer result.Content.Close()
 
 	writeMultipartMediaResponse(w, result)
+}
+
+// getRoomMembers retorna os membros da sala
+// GET /_matrix/client/v3/rooms/{roomId}/members
+func (h *Handler) getRoomMembers(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
+		return
+	}
+
+	// Extrair parâmetros de query de filtro opcionais
+	membershipFilter := r.URL.Query().Get("membership")
+	notMembershipFilter := r.URL.Query().Get("not_membership")
+
+	events, err := h.roomInteractionService.GetRoomMembers(ctx, userID, roomID, membershipFilter, notMembershipFilter)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not in this room")
+			return
+		}
+		log.Printf("[ERROR] GET /members: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room members")
+		return
+	}
+
+	// Criar a estrutura anónima inline exigida pelo protocolo Matrix
+	response := struct {
+		Chunk []domain.Evento `json:"chunk"`
+	}{
+		Chunk: events,
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // writeMultipartMediaResponse escreve a mídia no formato multipart/mixed exigido para respostas de download via federação
