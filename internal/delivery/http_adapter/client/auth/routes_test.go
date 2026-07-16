@@ -135,7 +135,11 @@ func TestPostRegisterUserInUse(t *testing.T) {
 	authSvc := usecase.NewAuthService("jwt-secret", "example.com", userStore, &authDeviceStore{})
 	h := NewHandler(authSvc)
 
-	payload := RegisterRequest{Username: "alice", Password: "pass"}
+	payload := RegisterRequest{
+		Username: "alice",
+		Password: "pass",
+		Auth:     AuthenticationData{Type: "m.login.password", Session: "1234"},
+	}
 	body, _ := json.Marshal(payload)
 
 	rec := httptest.NewRecorder()

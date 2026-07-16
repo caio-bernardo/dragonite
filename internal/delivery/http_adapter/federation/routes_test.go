@@ -20,6 +20,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 )
 
 type fakeSystemStorage struct{}
@@ -313,6 +314,14 @@ type fakeDirectoryStorage struct {
 	total   int
 }
 
+func (f *fakeDirectoryStorage) GetRoomIDByAlias(ctx context.Context, alias string) (string, error) {
+	return "", types.ErrNotFound
+}
+
+func (f *fakeDirectoryStorage) DeleteAlias(ctx context.Context, alias string) error {
+	return nil
+}
+
 func (f *fakeDirectoryStorage) SearchDirectory(_ context.Context, _ string, limit, offset int) ([]domain.PublicRoomEntry, int, error) {
 	if offset >= len(f.entries) {
 		return []domain.PublicRoomEntry{}, f.total, nil
@@ -328,7 +337,7 @@ func newTestHandlerWithDir(t *testing.T, storage *fakeDirectoryStorage) *Handler
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	dirSvc := usecase.NewDirectoryService(storage, nil, nil)
+	dirSvc := usecase.NewDirectoryService(storage, nil, nil, nil, "example.com")
 	return NewHandler(sys, nil, nil, nil, dirSvc, nil, nil, "example.com")
 }
 
