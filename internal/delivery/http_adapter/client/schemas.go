@@ -88,6 +88,17 @@ type JoinedRoomsResponse struct {
 	JoinedRooms []string `json:"joined_rooms"`
 }
 
+// GET /_matrix/client/v3/directory/room/{roomAlias} resposta
+type RoomAliasResponse struct {
+	RoomID  string   `json:"room_id"`
+	Servers []string `json:"servers"`
+}
+
+// PUT /_matrix/client/v3/directory/room/{roomAlias} corpo da requisição
+type SetRoomAliasRequest struct {
+	RoomID string `json:"room_id"`
+}
+
 // QueryKeysRequest representa o corpo da requisição enviada pelo Element
 type QueryKeysRequest struct {
 	DeviceKeys map[string][]string `json:"device_keys"`

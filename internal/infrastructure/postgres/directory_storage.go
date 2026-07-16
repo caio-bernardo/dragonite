@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *PostgresStorage) SearchDirectory(ctx context.Context, term string, limit, offset int) ([]domain.PublicRoomEntry, int, error) {
@@ -43,4 +45,32 @@ func (s *PostgresStorage) SearchDirectory(ctx context.Context, term string, limi
 	}
 
 	return entries, total, nil
+}
+
+func (s *PostgresStorage) GetRoomIDByAlias(ctx context.Context, alias string) (string, error) {
+	row := s.db.QueryRow(ctx, "SELECT id_canal FROM Canal_Alias WHERE alias = $1", alias)
+
+	var roomID string
+	err := row.Scan(&roomID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", types.ErrNotFound
+		}
+		return "", fmt.Errorf("failed to get room by alias: %w", err)
+	}
+
+	return roomID, nil
+}
+
+func (s *PostgresStorage) DeleteAlias(ctx context.Context, alias string) error {
+	db := getTxOrPool(ctx, s.db)
+	tag, err := db.Exec(ctx, "DELETE FROM Canal_Alias WHERE alias = $1", alias)
+	if err != nil {
+		return fmt.Errorf("failed to delete alias: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return types.ErrNotFound
+	}
+
+	return nil
 }

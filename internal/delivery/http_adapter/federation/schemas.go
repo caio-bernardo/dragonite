@@ -149,3 +149,8 @@ type BackfillResponse struct {
 	OriginServerTS int64           `json:"origin_server_ts"`
 	PDUs           []domain.Evento `json:"pdus"`
 }
+
+type QueryDirectoryResponse struct {
+	RoomID  string   `json:"room_id"`
+	Servers []string `json:"servers"`
+}

@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
@@ -12,14 +14,112 @@ type DirectoryService struct {
 	dirStore   DirectoryStorage
 	userStore  UsuarioStorage
 	canalStore CanalStorage
+	remoteQuery RemoteDirectoryResolver
+	serverName  string
 }
 
-func NewDirectoryService(dirStore DirectoryStorage, userStore UsuarioStorage, canalStore CanalStorage) *DirectoryService {
+func NewDirectoryService(dirStore DirectoryStorage, userStore UsuarioStorage, canalStore CanalStorage, remoteQuery RemoteDirectoryResolver, serverName string) *DirectoryService {
 	return &DirectoryService{
 		dirStore:   dirStore,
 		userStore:  userStore,
 		canalStore: canalStore,
+		remoteQuery: remoteQuery,
+		serverName:  serverName,
 	}
+}
+
+// parseAliasDomain valida o formato #local:domain de um alias e retorna o domínio.
+func parseAliasDomain(alias string) (string, bool) {
+	if !strings.HasPrefix(alias, "#") {
+		return "", false
+	}
+	parts := strings.SplitN(alias[1:], ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	return parts[1], true
+}
+
+// resolveLocal busca o room_id de um alias local e monta a lista de servidores conhecidos da sala.
+func (s *DirectoryService) resolveLocal(ctx context.Context, alias string) (string, []string, error) {
+	roomID, err := s.dirStore.GetRoomIDByAlias(ctx, alias)
+	if err != nil {
+		return "", nil, err
+	}
+
+	servers, err := s.canalStore.GetCanalParticipatingServers(ctx, roomID)
+	if err != nil {
+		servers = nil
+	}
+	// garante que o próprio servidor apareça na lista
+	found := false
+	for _, srv := range servers {
+		if srv == s.serverName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		servers = append([]string{s.serverName}, servers...)
+	}
+
+	return roomID, servers, nil
+}
+
+// ResolveAlias resolve um alias pro cliente: local se o domínio bater com este servidor,
+// via federação (GET /_matrix/federation/v1/query/directory) caso contrário
+func (s *DirectoryService) ResolveAlias(ctx context.Context, alias string) (string, []string, error) {
+	domain, ok := parseAliasDomain(alias)
+	if !ok {
+		return "", nil, types.ErrInvalidParam
+	}
+
+	if domain != s.serverName {
+		return s.remoteQuery.QueryDirectory(ctx, domain, alias)
+	}
+
+	return s.resolveLocal(ctx, alias)
+}
+
+// ResolveLocalAlias é usado pelo endpoint de federação: só deve responder por aliases
+// que pertencem a este servidor (evita loop e respeita a recomendação da spec de que
+// homeservers só devem consultar aliases do domínio-alvo)
+func (s *DirectoryService) ResolveLocalAlias(ctx context.Context, alias string) (string, []string, error) {
+	domain, ok := parseAliasDomain(alias)
+	if !ok || domain != s.serverName {
+		return "", nil, types.ErrNotFound
+	}
+	return s.resolveLocal(ctx, alias)
+}
+
+// CreateAlias mapeia um alias local a um room_id
+func (s *DirectoryService) CreateAlias(ctx context.Context, alias, roomID string) error {
+	domain, ok := parseAliasDomain(alias)
+	if !ok || domain != s.serverName {
+		return types.ErrInvalidParam
+	}
+
+	existing, err := s.dirStore.GetRoomIDByAlias(ctx, alias)
+	if err == nil {
+		if existing == roomID {
+			return nil
+		}
+		return types.ErrAlreadyInUse
+	}
+	if !errors.Is(err, types.ErrNotFound) {
+		return err
+	}
+
+	return s.canalStore.SaveAlias(ctx, roomID, alias)
+}
+
+// DeleteAlias remove o mapeamento de um alias local
+func (s *DirectoryService) DeleteAlias(ctx context.Context, alias string) error {
+	domain, ok := parseAliasDomain(alias)
+	if !ok || domain != s.serverName {
+		return types.ErrInvalidParam
+	}
+	return s.dirStore.DeleteAlias(ctx, alias)
 }
 
 func (s *DirectoryService) ListPublic(ctx context.Context, term string, limit int, offset int) (*domain.PublicRoomsChunck, error) {

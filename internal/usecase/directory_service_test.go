@@ -80,7 +80,7 @@ func TestDirectoryServiceSearchProfilesBuildsFilter(t *testing.T) {
 	}
 	canalStore := &fakeCanalStore{joinedRooms: []string{"!room1:example.com", "!room2:example.com"}}
 
-	svc := NewDirectoryService(nil, userStore, canalStore)
+	svc := NewDirectoryService(nil, userStore, canalStore, nil, "example.com")
 
 	ctx := context.WithValue(context.Background(), types.UserIDKey, "@searcher:example.com")
 	profiles, err := svc.SearchProfiles(ctx, "Ali", 10)
@@ -103,7 +103,7 @@ func TestDirectoryServiceSearchProfilesBuildsFilter(t *testing.T) {
 }
 
 func TestDirectoryServiceSearchProfilesRequiresQuery(t *testing.T) {
-	svc := NewDirectoryService(nil, &fakeUserStore{}, &fakeCanalStore{})
+	svc := NewDirectoryService(nil, &fakeUserStore{}, &fakeCanalStore{}, nil, "example.com")
 	ctx := context.WithValue(context.Background(), types.UserIDKey, "@searcher:example.com")
 
 	_, err := svc.SearchProfiles(ctx, "", 10)

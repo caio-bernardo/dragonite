@@ -62,6 +62,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	auth := h.xMatrixMiddleware
 
 	mux.Handle("GET /_matrix/federation/v1/query/profile", auth(http.HandlerFunc(h.getProfile)))
+	mux.Handle("GET /_matrix/federation/v1/query/directory", auth(http.HandlerFunc(h.getDirectory)))
 	mux.Handle("PUT /_matrix/federation/v2/invite/{roomId}/{eventId}", auth(http.HandlerFunc(h.putInvite)))
 	mux.Handle("PUT /_matrix/federation/v1/send/{txnId}", auth(http.HandlerFunc(h.putSendTxn)))
 	mux.Handle("GET /_matrix/federation/v1/backfill/{roomId}", auth(http.HandlerFunc(h.getBackfill)))
@@ -154,6 +155,27 @@ func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, profile)
+}
+
+// getDirectory resolve um alias de sala hospedado localmente, pra outro homeserver via federação.
+// GET /_matrix/federation/v1/query/directory
+func (h *Handler) getDirectory(w http.ResponseWriter, r *http.Request) {
+	alias := r.URL.Query().Get("room_alias")
+	if alias == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "room_alias is required")
+		return
+	}
+
+	roomID, servers, err := h.dirService.ResolveLocalAlias(r.Context(), alias)
+	if err != nil {
+		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Room alias not found.")
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, QueryDirectoryResponse{
+		RoomID:  roomID,
+		Servers: servers,
+	})
 }
 
 // parseXMatrixHeader decompõe o cabeçalho Authorization: X-Matrix k="v",... num map.

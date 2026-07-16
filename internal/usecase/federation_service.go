@@ -13,6 +13,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -904,6 +905,57 @@ func (f *FederationService) SendJoinCall(ctx context.Context, remoteServer, room
 	}
 
 	return &sendJoinResult, nil
+}
+
+// OutboundQueryDirectoryResponse é a resposta de GET /_matrix/federation/v1/query/directory
+type OutboundQueryDirectoryResponse struct {
+	RoomID  string   `json:"room_id"`
+	Servers []string `json:"servers"`
+}
+
+// QueryDirectory implementa RemoteDirectoryResolver: consulta o homeserver remoto dono do 
+// alias via GET /_matrix/federation/v1/query/directory
+func (f *FederationService) QueryDirectory(ctx context.Context, remoteServer, roomAlias string) (string, []string, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return "", nil, err
+	}
+
+	uri := fmt.Sprintf("/_matrix/federation/v1/query/directory?room_alias=%s", url.QueryEscape(roomAlias))
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "GET", uri, remoteServer, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to sign query/directory request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil, types.ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", nil, fmt.Errorf("remote server rejected query/directory: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result OutboundQueryDirectoryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", nil, fmt.Errorf("failed to decode query/directory response: %w", err)
+	}
+
+	return result.RoomID, result.Servers, nil
 }
 
 // resolveStateAtIngestion calculates the consensus state map across all prev_events of an incoming PDU.

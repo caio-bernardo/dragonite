@@ -94,6 +94,8 @@ type SystemStorage interface {
 
 type DirectoryStorage interface {
 	SearchDirectory(ctx context.Context, term string, limit, offset int) ([]domain.PublicRoomEntry, int, error)
+	GetRoomIDByAlias(ctx context.Context, alias string) (string, error)
+	DeleteAlias(ctx context.Context, alias string) error
 }
 
 type Notifier interface {
@@ -133,4 +135,10 @@ type RemoteMediaFetcher interface {
 	// content deve ser fechado pelo chamador e contentType e filename
 	// podem vir vazios se o servidor remoto não os informar
 	FetchRemoteMedia(ctx context.Context, destServerName, mediaID string) (content io.ReadCloser, contentType, filename string, err error)
+}
+
+// RemoteDirectoryResolver consulta um alias de sala hospedado em OUTRO servidor Matrix via
+// federação (S2S), usado quando o domínio do alias não é o deste homeserver
+type RemoteDirectoryResolver interface {
+	QueryDirectory(ctx context.Context, remoteServer, roomAlias string) (roomID string, servers []string, err error)
 }

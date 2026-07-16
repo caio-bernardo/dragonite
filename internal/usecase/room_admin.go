@@ -98,7 +98,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	//  m.room.canonical_alias
 	var fullAlias string
 	if props.Alias != "" {
-		fullAlias = fmt.Sprintf("#%s:%s", props.Alias, roomID)
+		fullAlias = fmt.Sprintf("#%s:%s", props.Alias, s.serverName)
 		eventsToSave = append(eventsToSave, buildAliasEvent(roomID, props.CreatorID, fullAlias))
 	}
 

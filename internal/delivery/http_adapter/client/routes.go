@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -101,6 +102,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/user/{userId}/filter/{filterId}", authMiddleware(http.HandlerFunc(h.getFilter)))
 	// capacidades (mock)
 	mux.Handle("GET /_matrix/client/v3/capabilities", authMiddleware(http.HandlerFunc(h.getCapabilities)))
+
+	// directory de aliases de sala
+	mux.HandleFunc("GET /_matrix/client/v3/directory/room/{roomAlias}", h.resolveRoomAlias)
+	mux.Handle("PUT /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.setRoomAlias)))
+	mux.Handle("DELETE /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.deleteRoomAlias)))
 
 	// chaves de encriptação (mock)
 	mux.Handle("POST /_matrix/client/v3/keys/upload", authMiddleware(http.HandlerFunc(h.uploadKeys)))
@@ -303,6 +309,88 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// resolveRoomAlias resolve um alias de sala pra room_id + servidores conhecidos
+// GET /_matrix/client/v3/directory/room/{roomAlias}
+func (h *Handler) resolveRoomAlias(w http.ResponseWriter, r *http.Request) {
+	alias := r.PathValue("roomAlias")
+
+	roomID, servers, err := h.directoryService.ResolveAlias(r.Context(), alias)
+	if err != nil {
+		switch {
+		case errors.Is(err, types.ErrNotFound):
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, fmt.Sprintf("Room alias %s not found.", alias))
+		case errors.Is(err, types.ErrInvalidParam):
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "Room alias invalid")
+		default:
+			log.Printf("[ERROR] GET /directory/room/%s: %v", alias, err)
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to resolve alias")
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, RoomAliasResponse{
+		RoomID:  roomID,
+		Servers: servers,
+	})
+}
+
+// setRoomAlias cria um mapeamento de alias -> room_id
+// PUT /_matrix/client/v3/directory/room/{roomAlias}
+func (h *Handler) setRoomAlias(w http.ResponseWriter, r *http.Request) {
+	alias := r.PathValue("roomAlias")
+
+	var req SetRoomAliasRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		if err == types.ErrNoBodyFound {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "No request body")
+		} else {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Invalid request body")
+		}
+		return
+	}
+
+	if req.RoomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "room_id is required")
+		return
+	}
+
+	if err := h.directoryService.CreateAlias(r.Context(), alias, req.RoomID); err != nil {
+		switch {
+		case errors.Is(err, types.ErrInvalidParam):
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "Room alias invalid")
+		case errors.Is(err, types.ErrAlreadyInUse):
+			httputil.WriteMatrixError(w, http.StatusConflict, httputil.M_UNKNOWN, fmt.Sprintf("Room alias %s already exists.", alias))
+		default:
+			log.Printf("[ERROR] PUT /directory/room/%s: %v", alias, err)
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to create alias")
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+}
+
+// deleteRoomAlias remove o mapeamento de um alias
+// DELETE /_matrix/client/v3/directory/room/{roomAlias}
+func (h *Handler) deleteRoomAlias(w http.ResponseWriter, r *http.Request) {
+	alias := r.PathValue("roomAlias")
+
+	if err := h.directoryService.DeleteAlias(r.Context(), alias); err != nil {
+		switch {
+		case errors.Is(err, types.ErrNotFound):
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, fmt.Sprintf("Room alias %s not found.", alias))
+		case errors.Is(err, types.ErrInvalidParam):
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "Room alias invalid")
+		default:
+			log.Printf("[ERROR] DELETE /directory/room/%s: %v", alias, err)
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "failed to delete alias")
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
 
 // uploadKeys lida com o mock de upload de chaves (E2EE) do dispositivo

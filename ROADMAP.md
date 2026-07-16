@@ -67,7 +67,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [ ] POST /\_matrix/client/v3/rooms/{roomId}/unban — *reverter um ban.*
 - [ ] PUT /\_matrix/client/v3/rooms/{roomId}/redact/{eventId}/{txnId} — *apagar/editar mensagens enviadas por engano ou ofensivas.*
 - [X] GET /\_matrix/client/v3/joined_rooms — *atalho para listar salas do usuário sem precisar de um `/sync` completo.*
-- [ ] GET/PUT/DELETE /\_matrix/client/v3/directory/room/{roomAlias} — *resolver/gerenciar alias amigáveis de sala (ex: #geral:dragonite.com).*
+- [X] GET/PUT/DELETE /\_matrix/client/v3/directory/room/{roomAlias} — *resolver/gerenciar alias amigáveis de sala (ex: #geral:dragonite.com).*
 - [X] GET/POST /\_matrix/client/v3/publicRooms — *permitir que o usuário descubra salas públicas direto pelo cliente (versão client-side do que já existe na federação).*
 - [ ] GET /\_matrix/client/v1/media/config — *informar ao cliente o tamanho máximo de upload, evitando uploads fadados a falhar.*
 - [ ] GET /\_matrix/client/v1/media/preview_url — *gerar prévia (título/imagem/descrição) de links compartilhados no chat.*
@@ -125,7 +125,7 @@ resiliente (incluindo reconciliação de estado após partições de rede).
 - [ ] GET /\_matrix/federation/v1/make_knock/{roomId}/{userId} e PUT /send_knock/{roomId}/{eventId} — *permitir "bater na porta" de uma sala privada pedindo pra entrar, em vez de precisar de convite direto.*
 - [ ] PUT /\_matrix/federation/v1/invite/{roomId}/{eventId} — *versão legada do invite; a v2 já cobre o caso de uso, então baixa prioridade.*
 - [ ] PUT /\_matrix/federation/v1/exchange_third_party_invite/{roomId} e PUT /3pid/onbind — *convidar alguém para uma sala usando só o e-mail/telefone dela, antes mesmo de ter conta no Matrix.*
-- [ ] GET /\_matrix/federation/v1/query/directory — *resolver um alias de sala (#nome:servidor) hospedado por outro servidor remotamente.*
+- [X] GET /\_matrix/federation/v1/query/directory — *resolver um alias de sala (#nome:servidor) hospedado por outro servidor remotamente.*
 - [ ] GET /\_matrix/federation/v1/query/{queryType} — *endpoint genérico de consultas federadas além de perfil/diretório.*
 - [ ] GET /\_matrix/federation/v1/hierarchy/{roomId} — *navegar espaços (spaces) e sub-salas aninhadas entre servidores.*
 - [ ] GET /\_matrix/federation/v1/media/thumbnail/{mediaId} — *miniatura de mídia remota via federação; hoje o download remoto já serve o arquivo original, então é só otimização de banda.*
@@ -190,12 +190,13 @@ e não existe pusher registrado).
 
 ## Prioridades sugeridas (dentro dos obrigatórios que faltam)
 
-1. **Autenticação completa**: fechar `logout`, `refresh`, `whoami` — pré-requisito pra
-   qualquer coisa que dependa de sessão de verdade (ex: revogar um token comprometido)
-2. **Capabilities** (`GET /capabilities`) — clientes como Element consultam isso cedo no
-   fluxo de login pra saber o que o servidor suporta
-3. **Rooms**: `messages` (histórico), `state` (leitura), `members`/`joined_members` — sem
-   isso o cliente não consegue montar a timeline nem a lista de participantes direito
-4. **Federação**: `get_missing_events`, `state`/`state_ids` — importantes pra reconciliação
-   de DAG entre servidores quando há lacunas no histórico (cenário comum em partições de
-   rede, direto ligado ao tema de Sistemas Distribuídos do trabalho)
+- [ ] GET /\_matrix/client/v3/user/{userId}/filter/{filterId} 
+- [X] GET/PUT/DELETE /\_matrix/client/v3/directory/room/{roomAlias}
+- Bug da rota upload
+- Bug na rota refresh
+- [X] POST /_matrix/client/v3/keys/upload
+- [X]POST /_matrix/client/v3/keys/query
+
+Menos importante:
+- POST /_matrix/client/v3/keys/query
+- POST /_matrix/client/v3/keys/upload

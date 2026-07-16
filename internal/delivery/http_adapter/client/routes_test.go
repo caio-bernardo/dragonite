@@ -260,7 +260,7 @@ func TestSearchUsersOK(t *testing.T) {
 		{IDUsuario: "@alex:example.com", DisplayName: &display, AvatarURL: &avatar},
 	}}
 	canalStore := &clientCanalStore{joinedRooms: []string{"!room1:example.com"}}
-	dirService := usecase.NewDirectoryService(nil, userStore, canalStore)
+	dirService := usecase.NewDirectoryService(nil, userStore, canalStore, nil, "example.com")
 
 	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil)
 
@@ -291,7 +291,7 @@ func TestSearchUsersOK(t *testing.T) {
 }
 
 func TestSearchUsersMissingSearchTerm(t *testing.T) {
-	dirService := usecase.NewDirectoryService(nil, &clientUserStore{}, &clientCanalStore{})
+	dirService := usecase.NewDirectoryService(nil, &clientUserStore{}, &clientCanalStore{}, nil, "example.com")
 	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{}`)
