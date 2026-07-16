@@ -19,6 +19,9 @@ MIGRATIONS_DIR=${MIGRATIONS_DIR:-"./migrations"}
 # Path to the migrate binary resolved at runtime
 MIGRATE_CMD=""
 
+
+DB_URL="postgres://admin:admin123@localhost:5432/dragonite-database?sslmode=disable"
+
 show_help() {
     echo "Usage: $0 [command]"
     echo

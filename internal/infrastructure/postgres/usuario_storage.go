@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 	"github.com/jackc/pgx/v5"
 )
@@ -43,7 +44,7 @@ func (s *PostgresStorage) GetUsuarioByID(ctx context.Context, userID string) (*d
 	err := row.Scan(&user.ID, &user.LocalPart, &user.SenhaHash, &user.DataCriacao)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, nil
+			return nil, types.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to get usuario: %w", err)
 	}

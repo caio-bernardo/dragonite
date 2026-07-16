@@ -81,10 +81,10 @@ func (s *Server) TokenBearerMiddleware(next http.Handler) http.Handler {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
-			return s.jwtSecret, nil
+			return []byte(s.jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
-			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Invalid or expired token")
+			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, fmt.Errorf("Invalid token: %w", err).Error())
 			return
 		}
 

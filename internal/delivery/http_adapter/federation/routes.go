@@ -73,7 +73,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
 	mux.Handle("GET /_matrix/federation/v1/state_ids/{roomId}", auth(http.HandlerFunc(h.getStateIDs)))
-	mux.Handle("GET /_matrix/federation/v1/backfill/{roomId}", auth(http.HandlerFunc(h.getBackfill)))
 	mux.Handle("POST /_matrix/federation/v1/get_missing_events/{roomId}", auth(http.HandlerFunc(h.postGetMissingEvents)))
 	mux.Handle("GET /_matrix/federation/v1/media/download/{mediaId}", auth(http.HandlerFunc(h.getMediaDownload)))
 	mux.Handle("GET /_matrix/federation/v1/state/{roomId}", auth(http.HandlerFunc(h.getRoomState)))
@@ -240,10 +239,12 @@ func (h *Handler) xMatrixMiddleware(next http.Handler) http.Handler {
 			fetchedKeyID, fetchedKey, err := h.keyFetcher(origin)
 			if err != nil {
 				httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNAUTHORIZED, "failed to fetch server key")
+				log.Println("AAAAAAA [dentro do xMatrixMiddleware]")
 				return
 			}
 			if fetchedKeyID != keyID {
 				httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNAUTHORIZED, "key ID mismatch")
+				log.Println("AAAAAAA [dentro do xMatrixMiddleware]")
 				return
 			}
 			h.keyCache.Store(cacheKey, fetchedKey)
@@ -253,11 +254,13 @@ func (h *Handler) xMatrixMiddleware(next http.Handler) http.Handler {
 		sigBytes, err := base64.RawStdEncoding.DecodeString(sig)
 		if err != nil {
 			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNAUTHORIZED, "invalid signature encoding")
+			log.Println("AAAAAAA [dentro do xMatrixMiddleware]")
 			return
 		}
 
 		if !ed25519.Verify(pubKey, canonical, sigBytes) {
 			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNAUTHORIZED, "X-Matrix signature verification failed")
+			log.Println("AAAAAAA [dentro do xMatrixMiddleware]")
 			return
 		}
 
@@ -372,7 +375,6 @@ func (h *Handler) getBackfill(w http.ResponseWriter, r *http.Request) {
 	res.PDUs = events
 
 	httputil.WriteJSON(w, http.StatusOK, res)
-
 }
 
 func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
@@ -885,12 +887,12 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 // getRoomState retorna um snapshot de um estado de uma sala num determinado evento
 // GET /_matrix/federation/v1/state/{roomId}
 // https://spec.matrix.org/v1.18/server-server-api/#get_matrixfederationv1stateroomid
-func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request){
+func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
 	defer cancel()
 
 	// Parâmetros requeridos pela especificação
-	roomID := r.PathValue("roomId") // Path
+	roomID := r.PathValue("roomId")          // Path
 	eventID := r.URL.Query().Get("event_id") // Query
 
 	if roomID == "" || eventID == "" {

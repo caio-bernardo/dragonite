@@ -117,7 +117,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.HandleFunc("GET /.well-known/matrix/{fileName}", s.wellKnownMatrixHandler)
 
 	// wildcard
-	mux.HandleFunc("GET /", s.HelloWorldHandler)
+	// mux.HandleFunc("GET /", s.HelloWorldHandler)
 
 	// Adiciona middlewares
 	// NOTE: a ordem dos middleware importa! O mais interno é chamado primeiro.

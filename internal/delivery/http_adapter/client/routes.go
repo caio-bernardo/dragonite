@@ -94,16 +94,40 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/joined_rooms", authMiddleware(http.HandlerFunc(h.getJoinedRooms)))
 	// regras de notificação (mock)
 	mux.Handle("GET /_matrix/client/v3/pushrules/", authMiddleware(http.HandlerFunc(h.getPushRules)))
-	// upload de filtro (mock)
+	// upload/leitura de filtro (mock)
 	mux.Handle("POST /_matrix/client/v3/user/{userId}/filter", authMiddleware(http.HandlerFunc(h.uploadFilter)))
+	mux.Handle("GET /_matrix/client/v3/user/{userId}/filter/{filterId}", authMiddleware(http.HandlerFunc(h.getFilter)))
 	// capacidades (mock)
 	mux.Handle("GET /_matrix/client/v3/capabilities", authMiddleware(http.HandlerFunc(h.getCapabilities)))
+
+	// chaves de encriptação (mock)
+	mux.Handle("POST /_matrix/client/v3/keys/upload", authMiddleware(http.HandlerFunc(h.uploadKeys)))
+	mux.Handle("POST /_matrix/client/v3/keys/query", authMiddleware(http.HandlerFunc(h.queryKeys)))
 
 }
 
 func (h *Handler) getVersions(w http.ResponseWriter, r *http.Request) {
 	response := SupportedVersionsResponse{
-		Versions: []string{"r0.0.5", "v1.18"},
+		Versions: []string{
+			"r0.0.1",
+			"r0.1.0",
+			"r0.2.0",
+			"r0.3.0",
+			"r0.4.0",
+			"r0.5.0",
+			"r0.6.0",
+			"r0.6.1", // Legacy standard
+			"v1.1",
+			"v1.2",
+			"v1.3",
+			"v1.4",
+			"v1.5",
+			"v1.6",
+			"v1.8",
+			"v1.9",
+			"v1.11", // Current standard support in many clients
+			"v1.18",
+		},
 	}
 	httputil.WriteJSON(w, 200, response)
 }
@@ -133,6 +157,22 @@ func (h *Handler) uploadFilter(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, FilterUploadResponse{
 		FilterID: "0",
 	})
+}
+
+// getFilter é um mock que retorna um filtro com base no filter_id
+// GET /_matrix/client/v3/user/{userId}/filter/{filterId}
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3useruseridfilterfilterid
+func (h *Handler) getFilter(w http.ResponseWriter, r *http.Request) {
+	loggedUser := r.Context().Value(types.UserIDKey).(string)
+	userId := r.PathValue("userId")
+
+	if loggedUser != userId {
+		httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "User not authorized")
+		return
+	}
+	_ = r.PathValue("filterId")
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
 
 // getCapabilities é um mock que retorna apenas a capability obrigatória pela spec (m.room_versions)
@@ -248,6 +288,32 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// uploadKeys lida com o mock de upload de chaves (E2EE) do dispositivo
+// POST /_matrix/client/v3/keys/upload
+func (h *Handler) uploadKeys(w http.ResponseWriter, r *http.Request) {
+	// A especificação exige retornar a contagem de chaves de uso único (One-Time Keys) remanescentes.
+	// Fingir que recebemos e salvamos as chaves é o suficiente para parar o spam do cliente.
+	response := map[string]any{
+		"one_time_key_counts": map[string]int{
+			"signed_curve25519": 50, // Dizemos ao Element que ele tem 50 OTKs seguras salvas
+		},
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// queryKeys lida com o mock de busca por chaves de outros dispositivos
+// POST /_matrix/client/v3/keys/query
+func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
+	// Retornamos um mapa vazio de chaves de dispositivos para evitar erros de descriptografia no cliente.
+	response := map[string]any{
+		"device_keys": map[string]any{}, // Nenhuma chave de terceiros encontrada
+		"failures":    map[string]any{},
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
 }

@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -45,16 +47,19 @@ type LoginSuccess struct {
 }
 
 func (s *AuthService) Login(ctx context.Context, params LoginParams) (LoginSuccess, error) {
-	if params.Indentifier.Type != types.IdentifierTypeUser {
+	if params.Indentifier.Type != types.IdentifierTypeUser || params.Indentifier.User == "" {
 		return LoginSuccess{}, types.ErrUnimplemented
 	}
 
-	user, err := s.userStore.GetUsuarioByID(ctx, params.Indentifier.User)
-	if err != nil {
+	localpart := fmt.Sprintf("@%s:%s", params.Indentifier.User, s.ServerName)
+	user, err := s.userStore.GetUsuarioByID(ctx, localpart)
+	if err != nil || user == nil {
+		log.Printf("[DEBUG: (Login) auth_service] %v: %v", user, err)
 		return LoginSuccess{}, types.ErrInvalidCredentials
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.SenhaHash), []byte(params.Password)); err != nil {
+		log.Println("[DEBUG: (Login) auth_service] %w", err)
 		return LoginSuccess{}, types.ErrInvalidCredentials
 	}
 
@@ -76,6 +81,7 @@ func (s *AuthService) Login(ctx context.Context, params LoginParams) (LoginSucce
 		var err error
 		deviceID, err = uuid.Parse(params.DeviceID)
 		if err != nil {
+			log.Println("[DEBUG: (Login) auth_service] %w", err)
 			return LoginSuccess{}, types.ErrInvalidCredentials
 		}
 	}
@@ -160,6 +166,7 @@ func (s *AuthService) Register(ctx context.Context, params RegisterParams) (stri
 
 	// cria um usuario, profile e AccountData
 	userProps := domain.Usuario{
+		ID:        fmt.Sprintf("@%s:%s", params.Username, s.ServerName),
 		LocalPart: params.Username,
 		SenhaHash: hashedPassword,
 	}

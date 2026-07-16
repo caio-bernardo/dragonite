@@ -27,6 +27,28 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.HandleFunc("POST /_matrix/client/v3/refresh", h.postRefresh)
 	mux.Handle("POST /_matrix/client/v3/logout", authMiddleware(http.HandlerFunc(h.postLogout)))
 	mux.HandleFunc("POST /_matrix/client/v3/register", h.postRegister)
+	mux.HandleFunc("GET /_matrix/client/v3/register/available", h.getAvailable)
+}
+
+func (h *Handler) getAvailable(w http.ResponseWriter, r *http.Request) {
+
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_USERNAME, "empty username")
+		return
+	}
+
+	// TODO: implementar isso
+	// available, err := h.authService.IsUsernameAvailable(username)
+	// if err != nil {
+	// 	httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+	// 	return
+	// }
+
+	resp := map[string]bool{
+		"available": true,
+	}
+	httputil.WriteJSON(w, 200, resp)
 }
 
 // getLogin retorna os tipos de autenticação suportados pelo servidor, o cliente deve escolher um para usar em /login
@@ -43,11 +65,6 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), httputil.RequestTimeout)
 	defer cancel()
 
-	if r.Body == nil {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Request body is empty")
-		return
-	}
-
 	var payload LoginRequest
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
@@ -59,6 +76,11 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_UNRECOGNIZED, "Unsupported/Unknown auth type")
 		return
 	}
+
+	// if payload.Identifier.Type == "" {
+	// 	httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing user identifier")
+	// 	return
+	// }
 
 	success, err := h.authService.Login(ctx, usecase.LoginParams{
 		Indentifier: payload.Identifier,
@@ -154,6 +176,18 @@ func (h *Handler) postRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Auth.Type == "" && req.Auth.Session == "" {
+		resp := map[string]any{
+			"flows": []any{
+				map[string]any{"stages": []any{"m.login.password"}},
+			},
+			"params":  map[string]any{},
+			"session": "1234",
+		}
+		httputil.WriteJSON(w, http.StatusUnauthorized, resp)
+		return
+	}
+
 	userID, err := h.authService.Register(ctx, usecase.RegisterParams{
 		Username: req.Username,
 		Senha:    req.Password,
@@ -162,7 +196,7 @@ func (h *Handler) postRegister(w http.ResponseWriter, r *http.Request) {
 		if err == types.ErrAlreadyInUse {
 			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_USER_IN_USE, "Username already exists")
 		} else {
-			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to register")
+			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
 		}
 		return
 	}
