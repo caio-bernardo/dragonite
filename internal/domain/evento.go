@@ -5,7 +5,7 @@ import (
 )
 
 type Evento struct {
-	ID               string          `json:"id"`
+	ID               string          `json:"event_id"`
 	Tipo             string          `json:"type"`
 	Content          json.RawMessage `json:"content"`
 	CanalID          string          `json:"room_id"`
@@ -14,21 +14,21 @@ type Evento struct {
 
 	StreamOrdering int64 `json:"-"` // NOTE: campo interno, não deve ser exposto ao cliente
 
-	StateKey *string `json:"state_key"`
-	Redacts  string  `json:"redacts"`
+	StateKey *string `json:"state_key,omitempty"`
+	Redacts  string  `json:"redacts,omitempty"`
 
-	PrevEventos []string `json:"prev_events"`
-	AuthEventos []string `json:"auth_events"`
-	Depth       int64    `json:"depth"`
+	PrevEventos []string `json:"prev_events,omitempty"`
+	AuthEventos []string `json:"auth_events,omitempty"`
+	Depth       int64    `json:"depth,omitempty"`
 
-	Hashes     json.RawMessage `json:"hashes"`
-	Signatures json.RawMessage `json:"signature"`
-	Unsigned   json.RawMessage `json:"unsigned"` // dados adicionados pelo servidor
+	Hashes     json.RawMessage `json:"hashes,omitempty"`
+	Signatures json.RawMessage `json:"signature,omitempty"`
+	Unsigned   json.RawMessage `json:"unsigned,omitempty"` // dados adicionados pelo servidor
 }
 
 type StrippedEvento struct {
 	Tipo     string          `json:"type"`
 	Content  json.RawMessage `json:"content"`
-	StateKey *string         `json:"state_key"`
+	StateKey *string         `json:"state_key,omitempty"`
 	Sender   string          `json:"sender"`
 }

@@ -255,8 +255,12 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 	// Converter o token "from" num stream_ordering (int64)
 	var fromToken int64
 	if from != "" {
-		parsed, err := strconv.ParseInt(from, 10, 64)
-		if err == nil {
+		// 1. Tentar primeiro interpretar usando o formato padrão de SyncToken do Matrix (ex: "s15_0_0")
+		token := domain.ParseToken(from)
+		if token.TimelinePosition != 0 {
+			fromToken = token.TimelinePosition
+		} else if parsed, err := strconv.ParseInt(from, 10, 64); err == nil {
+			// 2. Fallback caso o cliente tenha passado um número puro (ex: "15")
 			fromToken = parsed
 		}
 	}
@@ -267,13 +271,23 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 		return nil, fmt.Errorf("failed to get messages history: %w", err)
 	}
 
+	if eventos == nil {
+		eventos = []domain.Evento{}
+	}
+
 	// Determinar o token de paginação 'end' com base no último evento do chunk
 	var endToken string
 	if len(eventos) > 0 {
-		lastEvent := eventos[len(eventos)-1]
-		endToken = strconv.FormatInt(lastEvent.StreamOrdering, 10)
+		var lastEvent domain.Evento
+		if dir == "b" {
+			lastEvent = eventos[0]
+		} else {
+			lastEvent = eventos[len(eventos)-1]
+		}
+		// IMPORTANT: O token gerado DEVE ser formatado como SyncToken para consistência no cliente
+		endToken = domain.SyncToken{TimelinePosition: lastEvent.StreamOrdering}.Encode()
 	} else {
-		endToken = from // Se não houver mais eventos, o fim é igual ao início
+		endToken = ""
 	}
 
 	return &GetMessagesResponse{

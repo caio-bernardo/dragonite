@@ -63,6 +63,7 @@ type EventoStorage interface {
 	// Retorna todos os eventos com base em SyncToken. Retorna uma lista de eventos ordenados com base em StreamOrdering
 	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
 	GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error)
+	GetMaxStreamOrdering(ctx context.Context) (int64, error)
 	SaveEvento(ctx context.Context, event *domain.Evento) error
 	GetEvento(ctx context.Context, eventID string) (*domain.Evento, error)
 	GetEventsSince(ctx context.Context, roomID string, limit int, eventIDs []string) ([]domain.Evento, error)

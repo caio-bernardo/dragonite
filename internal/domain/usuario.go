@@ -22,17 +22,17 @@ type Profile struct {
 
 type AccountData struct {
 	IDUsuario string          `json:"-"`
-	IDCanal   string          `json:"id_canal,omitempty"`
-	Tipo      string          `json:"tipo,omitempty"`
-	Content   json.RawMessage `json:"content,omitempty"`
+	IDCanal   string          `json:"-"`
+	Tipo      string          `json:"type"`
+	Content   json.RawMessage `json:"content"`
 }
 
 type Dispositivo struct {
-	ID                    uuid.UUID `json:"id_dispositivo"`
-	Nome                  string    `json:"nome_dispositivo"`
-	UsuarioID             string    `json:"usuario_id"`
+	ID                    uuid.UUID `json:"device_id"`
+	Nome                  string    `json:"device_name"`
+	UsuarioID             string    `json:"userd_id"`
 	RefreshToken          string    `json:"refresh_token"`
 	RefreshTokenExpiresAt time.Time `json:"refresh_token_expires_at"`
-	UltimoIPVisto         string    `json:"ultimo_ip_visto"`
-	UltimoTimestampVisto  time.Time `json:"ultimo_timestamp_visto"`
+	UltimoIPVisto         string    `json:"last_seen_ip"`
+	UltimoTimestampVisto  time.Time `json:"last_seen_ts"`
 }

@@ -127,6 +127,9 @@ func (e *roomsvcFakeEventoStorage) GetSince(ctx context.Context, userID string, 
 func (e *roomsvcFakeEventoStorage) GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error) {
 	return 0, nil
 }
+func (e *roomsvcFakeEventoStorage) GetMaxStreamOrdering(ctx context.Context) (int64, error) {
+	return 0, nil
+}
 func (e *roomsvcFakeEventoStorage) SaveEvento(ctx context.Context, event *domain.Evento) error {
 	e.saved = append(e.saved, *event)
 	e.events[event.ID] = *event

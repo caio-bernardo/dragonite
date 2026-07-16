@@ -51,6 +51,7 @@ func HashMatrixEvent(event *domain.Evento) (string, error) {
 	// another server signs it!
 	delete(eventMap, "unsigned")
 	delete(eventMap, "signatures")
+	delete(eventMap, "event_id")
 
 	// 3. GENERATE CANONICAL JSON
 	// Go's json package automatically sorts map keys alphabetically, which

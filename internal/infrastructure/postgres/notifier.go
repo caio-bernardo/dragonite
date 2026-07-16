@@ -27,7 +27,7 @@ func (p *PostgresNotifier) StartBackgroundListener(ctx context.Context) error {
 	}
 	defer conn.Release()
 
-	_, err = conn.Exec(ctx, "LISTEN matrix_sync_client")
+	_, err = conn.Exec(ctx, "LISTEN matrix_room_sync_client")
 	if err != nil {
 		return fmt.Errorf("Failed to execute LISTEN: %w", err)
 	}

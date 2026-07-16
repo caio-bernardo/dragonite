@@ -76,7 +76,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /_matrix/federation/v1/get_missing_events/{roomId}", auth(http.HandlerFunc(h.postGetMissingEvents)))
 	mux.Handle("GET /_matrix/federation/v1/media/download/{mediaId}", auth(http.HandlerFunc(h.getMediaDownload)))
 	mux.Handle("GET /_matrix/federation/v1/state/{roomId}", auth(http.HandlerFunc(h.getRoomState)))
-	mux.Handle("GET /_matrix/federation/v1/rooms/{roomId}/members", auth(http.HandlerFunc(h.getRoomMembers)))
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -998,49 +997,6 @@ func (h *Handler) getMediaDownload(w http.ResponseWriter, r *http.Request) {
 	defer result.Content.Close()
 
 	writeMultipartMediaResponse(w, result)
-}
-
-// getRoomMembers retorna os membros da sala
-// GET /_matrix/client/v3/rooms/{roomId}/members
-func (h *Handler) getRoomMembers(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
-	defer cancel()
-
-	userID, ok := ctx.Value(types.UserIDKey).(string)
-	if !ok || userID == "" {
-		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
-		return
-	}
-
-	roomID := r.PathValue("roomId")
-	if roomID == "" {
-		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
-		return
-	}
-
-	// Extrair parâmetros de query de filtro opcionais
-	membershipFilter := r.URL.Query().Get("membership")
-	notMembershipFilter := r.URL.Query().Get("not_membership")
-
-	events, err := h.roomInteractionService.GetRoomMembers(ctx, userID, roomID, membershipFilter, notMembershipFilter)
-	if err != nil {
-		if errors.Is(err, types.ErrForbidden) {
-			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not in this room")
-			return
-		}
-		log.Printf("[ERROR] GET /members: %v", err)
-		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room members")
-		return
-	}
-
-	// Criar a estrutura anónima inline exigida pelo protocolo Matrix
-	response := struct {
-		Chunk []domain.Evento `json:"chunk"`
-	}{
-		Chunk: events,
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // writeMultipartMediaResponse escreve a mídia no formato multipart/mixed exigido para respostas de download via federação

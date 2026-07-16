@@ -34,6 +34,7 @@ func SignMatrixEvent(event *domain.Evento, serverName, keyID string, privateKey 
 	// 2. Removemos os campos que NÃO DEVEM fazer parte da assinatura
 	delete(eventMap, "signatures")
 	delete(eventMap, "unsigned")
+	delete(eventMap, "event_id")
 
 	// 3. Geramos o Canonical JSON
 	// Nota: Em Go, json.Marshal aplica a ordem alfabética nas chaves de um map[string]any nativamente,

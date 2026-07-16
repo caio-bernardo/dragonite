@@ -6,8 +6,20 @@ import (
 	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
-	"github.com/lib/pq"
 )
+
+func (s *PostgresStorage) GetMaxStreamOrdering(ctx context.Context) (int64, error) {
+	query := `
+		SELECT COALESCE(MAX(stream_ordering), 0)
+		FROM Evento
+	`
+	var maxOrdering int64
+	err := s.db.QueryRow(ctx, query).Scan(&maxOrdering)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get max stream ordering: %w", err)
+	}
+	return maxOrdering, nil
+}
 
 func (s *PostgresStorage) GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
 	// Todos os eventos de canais os quais o usuário pertence + eventos sobre o próprio usuário
@@ -17,7 +29,7 @@ func (s *PostgresStorage) GetSince(ctx context.Context, userID string, since dom
 		WHERE stream_ordering > $2 AND (
 			id_canal IN (
 				SELECT id_canal FROM Canal_Membership
-				WHERE id_usuario = $1 AND membership_type IN ('join', 'invite')
+				WHERE id_usuario = $1
 			)
 			OR
 			(tipo = 'm.room.member' AND state_key = $1)
@@ -58,7 +70,6 @@ func (s *PostgresStorage) GetEventsOfCanalSince(ctx context.Context, userID stri
 		    FROM Canal_Membership cm
 		    WHERE cm.id_usuario = $1
 		      AND cm.id_canal = $2
-		      AND cm.membership_type IN ('join', 'invite')
 		  )
 		ORDER BY e.stream_ordering ASC
 	`
@@ -130,7 +141,7 @@ func (s *PostgresStorage) GetMaxDepthFromEventos(ctx context.Context, prevEvento
 
 	query := `SELECT COALESCE(MAX(depth), 0) FROM Evento WHERE id_evento = ANY($1)`
 	var maxDepth int64
-	err := s.db.QueryRow(ctx, query, pq.Array(prevEventos)).Scan(&maxDepth)
+	err := s.db.QueryRow(ctx, query, prevEventos).Scan(&maxDepth)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get max depth: %w", err)
 	}
@@ -143,7 +154,7 @@ func (s *PostgresStorage) SaveEvento(ctx context.Context, event *domain.Evento) 
 	_, err := db.Exec(ctx,
 		`INSERT INTO Evento (id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, prev_eventos, auth_eventos, depth)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id_evento) DO NOTHING`,
-		event.ID, event.Tipo, event.CanalID, event.Sender, event.OrigemServidorTS, event.Content, event.StateKey, pq.Array(event.PrevEventos), pq.Array(event.AuthEventos), event.Depth)
+		event.ID, event.Tipo, event.CanalID, event.Sender, event.OrigemServidorTS, event.Content, event.StateKey, event.PrevEventos, event.AuthEventos, event.Depth)
 	if err != nil {
 		return fmt.Errorf("failed to save event: %w", err)
 	}
@@ -180,7 +191,7 @@ func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, lim
 		ORDER BY depth DESC, distance ASC
 		LIMIT $3;
 	`
-	rows, err := s.db.Query(ctx, query, roomID, pq.Array(events), limit)
+	rows, err := s.db.Query(ctx, query, roomID, events, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events for backfill: %w", err)
 	}
@@ -194,7 +205,7 @@ func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, lim
 		err := rows.Scan(
 			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
 			&event.OrigemServidorTS, &event.Content, &event.StreamOrdering,
-			&stateKey, pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+			&stateKey, &event.PrevEventos, &event.AuthEventos, &event.Depth,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan backfill event: %w", err)
@@ -246,7 +257,7 @@ func (s *PostgresStorage) GetCurrentStateEvents(ctx context.Context, roomID stri
 		err := rows.Scan(
 			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
 			&event.OrigemServidorTS, &event.Content, &stateKey,
-			pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+			&event.PrevEventos, &event.AuthEventos, &event.Depth,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan state event: %w", err)
@@ -264,7 +275,7 @@ func (s *PostgresStorage) GetCurrentStateEvents(ctx context.Context, roomID stri
 
 func (s *PostgresStorage) GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error) {
 	var query string
-	var args []interface{} // Faremos um slice com os argumentos da query
+	var args []any // Faremos um slice com os argumentos da query
 
 	// A paginação depende da direção ("b" ou "f") e se um token foi fornecido
 	if dir == "b" {
@@ -272,28 +283,27 @@ func (s *PostgresStorage) GetRoomMessagesHistory(ctx context.Context, roomID str
 			// Se não há token e vamos para trás, trazemos os mais recentes
 			query = `SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, stream_ordering
 					 FROM Evento WHERE id_canal = $1 ORDER BY stream_ordering DESC LIMIT $2`
-			args = []interface{}{roomID, limit}
+			args = []any{roomID, limit}
 		} else {
 			// Se há token, trazemos os mais antigos do que o token
 			query = `SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, stream_ordering
 					 FROM Evento WHERE id_canal = $1 AND stream_ordering < $2 ORDER BY stream_ordering DESC LIMIT $3`
-			args = []interface{}{roomID, fromToken, limit}
+			args = []any{roomID, fromToken, limit}
 		}
 	} else {
 		// Direção "f" (forward): trazemos os eventos mais recentes do que o token
 		query = `SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, stream_ordering
 				 FROM Evento WHERE id_canal = $1 AND stream_ordering > $2 ORDER BY stream_ordering ASC LIMIT $3`
-		args = []interface{}{roomID, fromToken, limit}
+		args = []any{roomID, fromToken, limit}
 	}
 
-	// Usamos ':=' para o Go inferir automaticamente que 'rows' é do tipo pgx.Rows
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute history query: %w", err)
 	}
 	defer rows.Close()
 
-	var eventos []domain.Evento
+	eventos := []domain.Evento{}
 	for rows.Next() {
 		var event domain.Evento
 		var stateKey sql.NullString
@@ -308,6 +318,13 @@ func (s *PostgresStorage) GetRoomMessagesHistory(ctx context.Context, roomID str
 			event.StateKey = &stateKey.String
 		}
 		eventos = append(eventos, event)
+	}
+
+	// If we queried descending ("b"), reverse the scanned slice before returning it.
+	if dir == "b" && len(eventos) > 0 {
+		for i, j := 0, len(eventos)-1; i < j; i, j = i+1, j-1 {
+			eventos[i], eventos[j] = eventos[j], eventos[i]
+		}
 	}
 
 	return eventos, nil
@@ -340,8 +357,8 @@ func (s *PostgresStorage) GetStateAndAuthChainEvents(ctx context.Context, roomID
 		err := rows.Scan(
 			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
 			&event.OrigemServidorTS, &event.Content, &stateKey,
-			&event.StreamOrdering, pq.Array(&event.PrevEventos),
-			pq.Array(&event.AuthEventos), &event.Depth,
+			&event.StreamOrdering, &event.PrevEventos,
+			&event.AuthEventos, &event.Depth,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to scan state event: %w", err)
@@ -380,7 +397,7 @@ func (s *PostgresStorage) GetStateAndAuthChainEvents(ctx context.Context, roomID
 			WHERE at.auth_id IS NOT NULL;
 		`
 
-	authRows, err := s.db.Query(ctx, authChainQuery, pq.Array(pduIDs))
+	authRows, err := s.db.Query(ctx, authChainQuery, pduIDs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query auth chain events failed: %w", err)
 	}
@@ -394,8 +411,8 @@ func (s *PostgresStorage) GetStateAndAuthChainEvents(ctx context.Context, roomID
 		err := authRows.Scan(
 			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
 			&event.OrigemServidorTS, &event.Content, &stateKey,
-			&event.StreamOrdering, pq.Array(&event.PrevEventos),
-			pq.Array(&event.AuthEventos), &event.Depth,
+			&event.StreamOrdering, &event.PrevEventos,
+			&event.AuthEventos, &event.Depth,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to scan auth event: %w", err)
@@ -455,7 +472,7 @@ func (s *PostgresStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID st
 		SELECT DISTINCT auth_id FROM auth_tree WHERE auth_id IS NOT NULL;
 	`
 
-	authRows, err := s.db.Query(ctx, authChainQuery, pq.Array(pduIDs))
+	authRows, err := s.db.Query(ctx, authChainQuery, pduIDs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query auth chain failed: %w", err)
 	}
@@ -509,7 +526,7 @@ func (s *PostgresStorage) GetMissingEvents(ctx context.Context, roomID string, e
 		LIMIT $5;
 	`
 
-	rows, err := s.db.Query(ctx, query, roomID, pq.Array(latestEvents), pq.Array(earliestEvents), minDepth, limit)
+	rows, err := s.db.Query(ctx, query, roomID, latestEvents, earliestEvents, minDepth, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query missing events failed: %w", err)
 	}
@@ -523,7 +540,7 @@ func (s *PostgresStorage) GetMissingEvents(ctx context.Context, roomID string, e
 		err := rows.Scan(
 			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
 			&event.OrigemServidorTS, &event.Content, &event.StreamOrdering,
-			&stateKey, pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+			&stateKey, &event.PrevEventos, &event.AuthEventos, &event.Depth,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan missing events failed: %w", err)
@@ -578,7 +595,7 @@ func (s *PostgresStorage) GetRoomMemberEvents(ctx context.Context, roomID string
 		err := rows.Scan(
 			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
 			&event.OrigemServidorTS, &event.Content, &stateKey,
-			pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+			&event.PrevEventos, &event.AuthEventos, &event.Depth,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan member event: %w", err)

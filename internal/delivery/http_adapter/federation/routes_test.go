@@ -562,6 +562,9 @@ func (f *fakeFedEventoStore) GetSince(_ context.Context, _ string, _ domain.Sync
 func (f *fakeFedEventoStore) GetMaxDepthFromEventos(_ context.Context, _ []string) (int64, error) {
 	return 0, nil
 }
+func (f *fakeFedEventoStore) GetMaxStreamOrdering(_ context.Context) (int64, error) {
+	return 0, nil
+}
 func (f *fakeFedEventoStore) GetEvento(_ context.Context, _ string) (*domain.Evento, error) {
 	return nil, nil
 }

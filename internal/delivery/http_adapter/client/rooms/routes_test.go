@@ -80,6 +80,9 @@ func (f *fakeRoomsEventoStore) GetSince(ctx context.Context, userID string, sinc
 func (f *fakeRoomsEventoStore) GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error) {
 	return 0, nil
 }
+func (f *fakeRoomsEventoStore) GetMaxStreamOrdering(ctx context.Context) (int64, error) {
+	return 0, nil
+}
 func (f *fakeRoomsEventoStore) SaveEvento(ctx context.Context, event *domain.Evento) error {
 	return nil
 }

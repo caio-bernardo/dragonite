@@ -83,7 +83,7 @@ func NewServer(port int,
 		Handler:      NewServer.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 35 * time.Second,
 	}
 
 	return &server

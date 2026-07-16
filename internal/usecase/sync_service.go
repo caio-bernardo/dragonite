@@ -27,11 +27,15 @@ func NewSyncService(userStore UsuarioStorage, eventStore EventoStorage, canalSto
 	}
 }
 
+type SyncAccountData struct {
+	Events []domain.AccountData `json:"events"`
+}
+
 // Resposta GET /_matrix/client/v3/sync
 type SyncClientResponse struct {
-	AccountData []domain.AccountData `json:"account_data"`
-	NextBatch   domain.SyncToken     `json:"next_batch"`
-	Rooms       RoomsSync            `json:"rooms"`
+	AccountData SyncAccountData  `json:"account_data"`
+	NextBatch   domain.SyncToken `json:"next_batch"`
+	Rooms       RoomsSync        `json:"rooms"`
 }
 
 type RoomsSync struct {
@@ -41,7 +45,7 @@ type RoomsSync struct {
 }
 
 type InvitedRoom struct {
-	InviteState InviteState `json:"invate_state"`
+	InviteState InviteState `json:"invite_state"`
 }
 
 type InviteState struct {
@@ -55,7 +59,7 @@ type JoinedRoom struct {
 }
 
 type State struct {
-	Events []domain.StrippedEvento `json:"events,omitempty"`
+	Events []EventoWithoutCanalID `json:"events,omitempty"`
 }
 
 type Timeline struct {
@@ -84,6 +88,10 @@ type LeftRoom struct {
 func (s *SyncService) SyncClient(ctx context.Context, userID string, since domain.SyncToken, timeout time.Duration) (SyncClientResponse, error) {
 	response, err := s.GetEventsSince(ctx, userID, since)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return SyncClientResponse{}, nil
+		}
+
 		return SyncClientResponse{
 			NextBatch: since,
 		}, err
@@ -110,23 +118,36 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, since domai
 	if err != nil {
 		// deu timeout, retornamos apenas uma lista vazia.
 		if errors.Is(err, context.DeadlineExceeded) {
-			return SyncClientResponse{
-				NextBatch: since,
-			}, nil
+			nextBatch, err := s.generateNextSinceToken(ctx, userID, since)
+			if err != nil {
+				return SyncClientResponse{
+					NextBatch: since,
+				}, err
+			}
+
+			response.NextBatch = nextBatch
+			return response, nil
 		}
-		return SyncClientResponse{
-			NextBatch: since,
-		}, err
+
+		if errors.Is(err, context.Canceled) {
+			return SyncClientResponse{}, nil
+		}
+
+		return SyncClientResponse{NextBatch: since}, err
 	}
 
-	response, err = s.GetEventsSince(pollCtx, userID, since)
+	response, err = s.GetEventsSince(ctx, userID, since)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return SyncClientResponse{}, nil
+		}
+
 		return SyncClientResponse{
 			NextBatch: since,
 		}, err
 	}
 
-	nextBatch, err := s.generateNextSinceToken(pollCtx, userID, since)
+	nextBatch, err := s.generateNextSinceToken(ctx, userID, since)
 	if err != nil {
 		return SyncClientResponse{
 			NextBatch: since,
@@ -143,11 +164,33 @@ func (s *SyncService) generateNextSinceToken(ctx context.Context, userID string,
 		return since, err
 	}
 
-	return util.GenerateNextSinceToken(since, eventos), nil
+	if len(eventos) > 0 {
+		return util.GenerateNextSinceToken(since, eventos), nil
+	}
+
+	maxOrdering, err := s.eventStore.GetMaxStreamOrdering(ctx)
+	if err != nil {
+		return since, err
+	}
+
+	nextToken := since
+	if maxOrdering > since.TimelinePosition {
+		nextToken.TimelinePosition = maxOrdering
+	}
+
+	return nextToken, nil
 }
 
 func isResponseEmpty(response SyncClientResponse) bool {
-	return len(response.Rooms.Join) == 0 && len(response.Rooms.Invite) == 0 && len(response.Rooms.Leave) == 0
+	if len(response.Rooms.Invite) > 0 || len(response.Rooms.Leave) > 0 {
+		return false
+	}
+	for _, room := range response.Rooms.Join {
+		if len(room.Timeline.Events) > 0 || len(room.State.Events) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *SyncService) GetEventsSince(ctx context.Context, userID string, since domain.SyncToken) (SyncClientResponse, error) {
@@ -161,7 +204,7 @@ func (s *SyncService) GetEventsSince(ctx context.Context, userID string, since d
 	mapInvites, err := s.GetInviteRooms(ctx, userID, since)
 	if err != nil {
 		return SyncClientResponse{
-			AccountData: accountData,
+			AccountData: SyncAccountData{Events: accountData},
 			NextBatch:   since,
 		}, err
 	}
@@ -169,7 +212,7 @@ func (s *SyncService) GetEventsSince(ctx context.Context, userID string, since d
 	mapJoined, err := s.GetJoinedRooms(ctx, userID, since)
 	if err != nil {
 		return SyncClientResponse{
-			AccountData: accountData,
+			AccountData: SyncAccountData{Events: accountData},
 			NextBatch:   since,
 		}, err
 	}
@@ -177,13 +220,13 @@ func (s *SyncService) GetEventsSince(ctx context.Context, userID string, since d
 	mapLeft, err := s.GetLeaveRooms(ctx, userID, since)
 	if err != nil {
 		return SyncClientResponse{
-			AccountData: accountData,
+			AccountData: SyncAccountData{Events: accountData},
 			NextBatch:   since,
 		}, err
 	}
 
 	return SyncClientResponse{
-		AccountData: accountData,
+		AccountData: SyncAccountData{Events: accountData},
 		NextBatch:   since,
 		Rooms: RoomsSync{
 			Invite: mapInvites,
@@ -233,8 +276,54 @@ func (s *SyncService) GetJoinedRooms(ctx context.Context, userID string, since d
 	}
 
 	mapJoined := make(map[string]JoinedRoom)
+
+	isFirstSync := since.TimelinePosition == 0
+
 	for _, roomID := range rooms {
 
+		events, err := s.eventStore.GetEventsOfCanalSince(ctx, userID, roomID, since)
+		if err != nil {
+			log.Printf("failed to get events of canal %s: %v", roomID, err)
+			continue
+		}
+
+		var stateEvents []EventoWithoutCanalID
+		if isFirstSync {
+			currState, err := s.eventStore.GetCurrentStateEvents(ctx, roomID)
+			if err != nil {
+				log.Printf("failed to get state events of canal %s: %v", roomID, err)
+				continue
+			}
+
+			stateEvents = make([]EventoWithoutCanalID, len(currState))
+			for i, event := range currState {
+				stateEvents[i] = EventoWithoutCanalID{
+					ID:               event.ID,
+					Tipo:             event.Tipo,
+					Content:          event.Content,
+					StateKey:         event.StateKey,
+					Sender:           event.Sender,
+					OrigemServidorTS: event.OrigemServidorTS,
+					Unsigned:         event.Unsigned,
+				}
+			}
+		} else {
+			// On incremental sync, ONLY send state events that occurred SINCE the sync token
+			// We can filter our timeline events for state events (events that have a state_key)
+			for _, event := range events {
+				if event.StateKey != nil {
+					stateEvents = append(stateEvents, EventoWithoutCanalID{
+						ID:               event.ID,
+						Tipo:             event.Tipo,
+						Content:          event.Content,
+						StateKey:         event.StateKey,
+						Sender:           event.Sender,
+						OrigemServidorTS: event.OrigemServidorTS,
+						Unsigned:         event.Unsigned,
+					})
+				}
+			}
+		}
 		accData, err := s.userStore.GetAccountDataOfCanal(ctx, userID, roomID)
 		if err != nil {
 			// skip this room on fail
@@ -242,25 +331,8 @@ func (s *SyncService) GetJoinedRooms(ctx context.Context, userID string, since d
 			continue
 		}
 
-		currState, err := s.eventStore.GetCurrentStateEvents(ctx, roomID)
-		if err != nil {
-			log.Printf("failed to get state events of canal %s: %v", roomID, err)
-			continue
-		}
-
-		stateEvents := make([]domain.StrippedEvento, len(currState))
-		for i, event := range currState {
-			stateEvents[i] = domain.StrippedEvento{
-				Tipo:     event.Tipo,
-				Content:  event.Content,
-				StateKey: event.StateKey,
-				Sender:   event.Sender,
-			}
-		}
-
-		events, err := s.eventStore.GetEventsOfCanalSince(ctx, userID, roomID, since)
-		if err != nil {
-			log.Printf("failed to get events of canal %s: %v", roomID, err)
+		// IMPORTANT: skip if no new events during polling
+		if !isFirstSync && len(events) == 0 && len(stateEvents) == 0 && len(accData) == 0 {
 			continue
 		}
 
@@ -277,13 +349,23 @@ func (s *SyncService) GetJoinedRooms(ctx context.Context, userID string, since d
 			}
 		}
 
+		// DYNAMIC PREV_BATCH CALCULATION:
+		// If we returned events, the prev_batch should point to the stream ordering of
+		// the EARLIEST event in our slice (events[0]) so that scrolling back starts right before it.
+		// If we returned no events, we fall back to the query's 'since' token.
+		prevBatchToken := since
+		if len(events) > 0 {
+			// Subtract 1 from the earliest stream_ordering to represent the boundary just before it
+			prevBatchToken.TimelinePosition = max(events[0].StreamOrdering-1, 0)
+		}
+
 		mapJoined[roomID] = JoinedRoom{
 			AccountData: accData,
 			State:       State{Events: stateEvents},
 			Timeline: Timeline{
 				Events:    parsedEvents,
 				Limited:   false,
-				PrevBatch: since,
+				PrevBatch: prevBatchToken,
 			},
 		}
 	}
@@ -303,26 +385,52 @@ func (s *SyncService) GetLeaveRooms(ctx context.Context, userID string, since do
 	}
 
 	mapLeft := make(map[string]LeftRoom)
+	isInitialSync := since.TimelinePosition == 0
+
 	for _, roomID := range leftRooms {
-		currState, err := s.eventStore.GetCurrentStateEvents(ctx, roomID)
-		if err != nil {
-			log.Printf("failed to get state events of canal %s: %v", roomID, err)
-			continue
-		}
-
-		stateEvents := make([]domain.StrippedEvento, len(currState))
-		for i, event := range currState {
-			stateEvents[i] = domain.StrippedEvento{
-				Tipo:     event.Tipo,
-				Content:  event.Content,
-				StateKey: event.StateKey,
-				Sender:   event.Sender,
-			}
-		}
-
 		events, err := s.eventStore.GetEventsOfCanalSinceLeft(ctx, userID, roomID, since)
 		if err != nil {
 			log.Printf("failed to get events of canal %s: %v", roomID, err)
+			continue
+		}
+
+		var stateEvents []EventoWithoutCanalID
+		if isInitialSync {
+			currState, err := s.eventStore.GetCurrentStateEvents(ctx, roomID)
+			if err != nil {
+				log.Printf("failed to get state events of canal %s: %v", roomID, err)
+				continue
+			}
+			stateEvents = make([]EventoWithoutCanalID, len(currState))
+			for i, event := range currState {
+				stateEvents[i] = EventoWithoutCanalID{
+					ID:               event.ID,
+					Tipo:             event.Tipo,
+					Content:          event.Content,
+					StateKey:         event.StateKey,
+					Sender:           event.Sender,
+					OrigemServidorTS: event.OrigemServidorTS,
+					Unsigned:         event.Unsigned,
+				}
+			}
+		} else {
+			for _, event := range events {
+				if event.StateKey != nil {
+					stateEvents = append(stateEvents, EventoWithoutCanalID{
+						ID:               event.ID,
+						Tipo:             event.Tipo,
+						Content:          event.Content,
+						StateKey:         event.StateKey,
+						Sender:           event.Sender,
+						OrigemServidorTS: event.OrigemServidorTS,
+						Unsigned:         event.Unsigned,
+					})
+				}
+			}
+		}
+
+		// If no changes occurred on this room since the token, skip it
+		if !isInitialSync && len(events) == 0 && len(stateEvents) == 0 {
 			continue
 		}
 
@@ -339,12 +447,17 @@ func (s *SyncService) GetLeaveRooms(ctx context.Context, userID string, since do
 			}
 		}
 
+		prevBatchToken := since
+		if len(events) > 0 {
+			prevBatchToken.TimelinePosition = max(events[0].StreamOrdering-1, 0)
+		}
+
 		mapLeft[roomID] = LeftRoom{
 			State: State{Events: stateEvents},
 			Timeline: Timeline{
 				Events:    parsedEvents,
 				Limited:   false,
-				PrevBatch: since,
+				PrevBatch: prevBatchToken, // <-- Corrected
 			},
 		}
 	}

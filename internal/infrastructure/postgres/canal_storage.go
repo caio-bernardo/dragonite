@@ -6,7 +6,6 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/jackc/pgx/v5"
-	"github.com/lib/pq"
 )
 
 func (s *PostgresStorage) Create(ctx context.Context, roomID, userID string) (*domain.Canal, error) {
@@ -248,7 +247,7 @@ func (s *PostgresStorage) UpdateForwardExtremities(ctx context.Context, canalID 
 		_, err := db.Exec(ctx, `
 				DELETE FROM Canal_Extremidades
 				WHERE id_canal = $1 AND id_evento = ANY($2)
-			`, canalID, pq.Array(prevEvents))
+			`, canalID, prevEvents)
 		if err != nil {
 			return fmt.Errorf("failed to delete old extremities: %w", err)
 		}

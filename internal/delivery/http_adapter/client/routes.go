@@ -1,6 +1,8 @@
 package client
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -271,23 +273,34 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	req.Filter = r.FormValue("filter")
 	req.FullState = r.FormValue("full_state") == "true"
 	req.SetPresence = SetPresence(r.FormValue("set_presence"))
+
 	timeoutStr := r.FormValue("timeout")
 	var timeout int
 	var err error
 	if timeoutStr != "" {
-		timeout, err = strconv.Atoi(timeoutStr)
+		parsedTimeout, err := strconv.Atoi(timeoutStr)
 		if err != nil {
 			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_UNKNOWN, "could not parse timeout. Expected integer")
 			return
 		}
+		timeout = parsedTimeout
 	}
-	req.Timeout = time.Duration(timeout) * time.Millisecond
-	if err != nil {
-		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "could not get events")
-		return
+	if timeout == 0 {
+		timeout = 30000 // 30s
 	}
 
+	req.Timeout = time.Duration(timeout) * time.Millisecond
+
 	response, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
+	if err != nil {
+		if r.Context().Err() == context.Canceled {
+			w.WriteHeader(499)
+			return
+		}
+		log.Printf("[%s] [ERROR] SyncClient: %s", time.Now().Format("2006-01-02 15:04:05"), err.Error())
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, fmt.Errorf("could not get events: %w", err).Error())
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
 }

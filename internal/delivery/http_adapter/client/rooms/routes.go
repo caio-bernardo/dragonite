@@ -48,8 +48,9 @@ func NewHandler(
 // RegisterRoutes registra todas as rotas de rooms no mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
 	// Não requer autenticação (spec permite listagem pública sem token)
-	mux.HandleFunc("GET /_matrix/client/v3/publicRooms", h.getPublicRooms)
+	mux.HandleFunc("POST /_matrix/client/v3/publicRooms", h.getPublicRooms)
 
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/members", authMiddleware(http.HandlerFunc(h.getRoomMembers)))
 	// Requerem autenticação
 	mux.Handle("POST /_matrix/client/v3/createRoom", authMiddleware(http.HandlerFunc(h.postCreateRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/join", authMiddleware(http.HandlerFunc(h.postJoinRoom)))
@@ -66,6 +67,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.getRoomState)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.getRoomState)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
+
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/initialSync", authMiddleware(http.HandlerFunc(h.getInitialSync)))
 	// marcação de leitura (mock)
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
@@ -736,4 +739,53 @@ func (h *Handler) getJoinedMembers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// getRoomMembers retorna os membros da sala
+// GET /_matrix/client/v3/rooms/{roomId}/members
+func (h *Handler) getRoomMembers(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
+		return
+	}
+
+	// Extrair parâmetros de query de filtro opcionais
+	membershipFilter := r.URL.Query().Get("membership")
+	notMembershipFilter := r.URL.Query().Get("not_membership")
+
+	events, err := h.roomInteractions.GetRoomMembers(ctx, userID, roomID, membershipFilter, notMembershipFilter)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not in this room")
+			return
+		}
+		log.Printf("[ERROR] GET /members: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room members")
+		return
+	}
+
+	// Criar a estrutura anónima inline exigida pelo protocolo Matrix
+	response := struct {
+		Chunk []domain.Evento `json:"chunk"`
+	}{
+		Chunk: events,
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// getInitialSync retorna o estado inicial da sala
+// GET /_matrix/client/v3/rooms/{roomId}/initialSync
+func (h *Handler) getInitialSync(w http.ResponseWriter, r *http.Request) {
+
 }
