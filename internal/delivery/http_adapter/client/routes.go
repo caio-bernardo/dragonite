@@ -306,12 +306,23 @@ func (h *Handler) uploadKeys(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
-// queryKeys lida com o mock de busca por chaves de outros dispositivos
+// queryKeys lida com o mock dinâmico de busca por chaves
 // POST /_matrix/client/v3/keys/query
 func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
-	// Retornamos um mapa vazio de chaves de dispositivos para evitar erros de descriptografia no cliente.
+	var req QueryKeysRequest
+
+	// Tentamos ler os usuários que o Element quer consultar.
+	// Se falhar ou estiver vazio, ignoramos
+	_ = httputil.ParseBody(r, &req)
+
+	deviceKeysResponse := make(map[string]map[string]any)
+	for userID := range req.DeviceKeys {
+		// Sem dispositivos criptografados
+		deviceKeysResponse[userID] = map[string]any{}
+	}
+
 	response := map[string]any{
-		"device_keys": map[string]any{}, // Nenhuma chave de terceiros encontrada
+		"device_keys": deviceKeysResponse,
 		"failures":    map[string]any{},
 	}
 
