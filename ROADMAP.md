@@ -73,7 +73,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [ ] GET /\_matrix/client/v1/media/preview_url — *gerar prévia (título/imagem/descrição) de links compartilhados no chat.*
 - [X] GET/PUT /\_matrix/client/v3/user/{userId}/account_data/{type} — *guardar preferências do usuário (tags de sala, favoritos) sincronizadas entre dispositivos.*
 - [X] GET/PUT /\_matrix/client/v3/user/{userId}/rooms/{roomId}/account_data/{type} — *igual ao acima, mas por sala (ex: marcar uma sala como silenciada).*
-- [ ] PUT/GET /\_matrix/client/v3/presence/{userId}/status — *mostrar status online/ausente/offline dos usuários.*
+- [X] PUT/GET /\_matrix/client/v3/presence/{userId}/status — *mostrar status online/ausente/offline dos usuários.*
 - [ ] PUT /\_matrix/client/v3/rooms/{roomId}/typing/{userId} — *indicador de "fulano está digitando...".*
 - [x] POST /\_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId} *(Como está agora: mock — retorna `{}`, sem persistir nada)* — *marcar mensagens como lidas e exibir contagem de não lidas corretamente.*
 - [x] POST /\_matrix/client/v3/rooms/{roomId}/read_markers *(Como está agora: mock - retorna `{}`, sem persistir nada; a spec trata `m.fully_read` via `/receipt` como uma chamada interna a este endpoint, mas como ambos são mocks isso não afeta nada por enquanto)*

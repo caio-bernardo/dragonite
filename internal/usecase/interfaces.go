@@ -141,3 +141,11 @@ type RemoteMediaFetcher interface {
 type RemoteDirectoryResolver interface {
 	QueryDirectory(ctx context.Context, remoteServer, roomAlias string) (roomID string, servers []string, err error)
 }
+
+// PresenceStorage define as operações de persistência do estado de presença dos usuários
+type PresenceStorage interface {
+	// UpsertPresence insere ou atualiza o estado de presença de um usuário
+	UpsertPresence(ctx context.Context, presence domain.Presence) error
+	// GetPresence retorna o estado de presença de um usuário, ou (nil, nil) se nunca foi definido
+	GetPresence(ctx context.Context, userID string) (*domain.Presence, error)
+}

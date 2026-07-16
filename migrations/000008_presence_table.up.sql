@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS Presence (
+    id_usuario VARCHAR(512) PRIMARY KEY REFERENCES Usuario(id_usuario) ON DELETE CASCADE,
+    presence_state VARCHAR(20) NOT NULL DEFAULT 'offline',
+    status_msg VARCHAR(255),
+    last_active_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
