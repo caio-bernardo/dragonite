@@ -328,4 +328,49 @@ func TestThumbnailMediaNotFound(t *testing.T) {
 	}
 	assertErrCode(t, rec, "M_NOT_FOUND")
 }
+
+// Testes de mediaConfig
+
+func TestMediaConfigSuccess(t *testing.T) {
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 10*1024*1024, nil)
+	h := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v1/media/config", nil)
+	req = req.WithContext(ctxWithUser("@alice:example.com"))
+
+	rec := httptest.NewRecorder()
+	h.mediaConfig(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp MediaConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.MUploadSize == nil || *resp.MUploadSize != 10*1024*1024 {
+		t.Fatalf("expected m.upload.size 10485760, got %v", resp.MUploadSize)
+	}
+}
+
+func TestMediaConfigUsesDefaultWhenUnconfigured(t *testing.T) {
+	// maxSizeBytes <= 0 no construtor do service → deve cair no DefaultMaxUploadBytes
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, nil)
+	h := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v1/media/config", nil)
+	req = req.WithContext(ctxWithUser("@alice:example.com"))
+
+	rec := httptest.NewRecorder()
+	h.mediaConfig(rec, req)
+
+	var resp MediaConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.MUploadSize == nil || *resp.MUploadSize != usecase.DefaultMaxUploadBytes {
+		t.Fatalf("expected default max upload size %d, got %v", usecase.DefaultMaxUploadBytes, resp.MUploadSize)
+	}
+}
  

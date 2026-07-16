@@ -315,3 +315,19 @@ func TestMediaServiceThumbnailReusesDownload(t *testing.T) {
 		t.Fatalf("expected content_type image/jpeg (original, no resizing), got %s", result.ContentType)
 	}
 }
+
+func TestMediaServiceMaxUploadSize(t *testing.T) {
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 20*1024*1024, nil)
+
+	if got := svc.MaxUploadSize(); got != 20*1024*1024 {
+		t.Fatalf("expected 20971520, got %d", got)
+	}
+}
+
+func TestMediaServiceMaxUploadSizeDefault(t *testing.T) {
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, nil)
+
+	if got := svc.MaxUploadSize(); got != DefaultMaxUploadBytes {
+		t.Fatalf("expected default %d, got %d", DefaultMaxUploadBytes, got)
+	}
+}

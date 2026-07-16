@@ -40,12 +40,12 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [X] POST /\_matrix/client/v3/rooms/{roomId}/invite 
 - [x] PUT /\_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId} 
 - [x] PUT /\_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey} 
-- [ ] GET /\_matrix/client/v3/rooms/{roomId}/state
-- [ ] GET /\_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}
-- [ ] GET /\_matrix/client/v3/rooms/{roomId}/event/{eventId}
+- [X] GET /\_matrix/client/v3/rooms/{roomId}/state
+- [X] GET /\_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}
+- [X] GET /\_matrix/client/v3/rooms/{roomId}/event/{eventId}
 - [X] GET /\_matrix/client/v3/rooms/{roomId}/messages
 - [ ] GET /\_matrix/client/v3/rooms/{roomId}/members
-- [ ] GET /\_matrix/client/v3/rooms/{roomId}/joined_members
+- [X] GET /\_matrix/client/v3/rooms/{roomId}/joined_members
 - [x] GET /\_matrix/client/v3/profile/{userId} 
 - [x] GET /\_matrix/client/v3/profile/{userId}/{keyName} 
 - [x] PUT /\_matrix/client/v3/profile/{userId}/{keyName}
@@ -58,7 +58,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [ ] POST /\_matrix/client/v3/logout/all — *derrubar todas as sessões do usuário de uma vez, útil se um token vazar.*
 - [ ] POST /\_matrix/client/v3/account/password — *deixar o usuário trocar a própria senha sem intervenção manual.*
 - [ ] POST /\_matrix/client/v3/account/deactivate — *permitir exclusão de conta pelo próprio usuário.*
-- [ ] GET /\_matrix/client/v3/user/{userId}/filter/{filterId} — *só relevante se o `filter` deixar de ser mock e passar a restringir eventos de verdade no `/sync`.*
+- [X] GET /\_matrix/client/v3/user/{userId}/filter/{filterId} — *só relevante se o `filter` deixar de ser mock e passar a restringir eventos de verdade no `/sync`.*
 - [x] DELETE /\_matrix/client/v3/profile/{userId}/{keyName} — *permite limpar displayname/avatar.*
 - [ ] POST /\_matrix/client/v3/join/{roomIdOrAlias} — *permitir entrar numa sala por alias amigável, não só por room ID.*
 - [ ] POST /\_matrix/client/v3/rooms/{roomId}/forget — *limpar o histórico local de uma sala já deixada, evitando que ela reapareça em syncs futuros.*
@@ -69,7 +69,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [X] GET /\_matrix/client/v3/joined_rooms — *atalho para listar salas do usuário sem precisar de um `/sync` completo.*
 - [X] GET/PUT/DELETE /\_matrix/client/v3/directory/room/{roomAlias} — *resolver/gerenciar alias amigáveis de sala (ex: #geral:dragonite.com).*
 - [X] GET/POST /\_matrix/client/v3/publicRooms — *permitir que o usuário descubra salas públicas direto pelo cliente (versão client-side do que já existe na federação).*
-- [ ] GET /\_matrix/client/v1/media/config — *informar ao cliente o tamanho máximo de upload, evitando uploads fadados a falhar.*
+- [X] GET /\_matrix/client/v1/media/config — *informar ao cliente o tamanho máximo de upload, evitando uploads fadados a falhar.*
 - [ ] GET /\_matrix/client/v1/media/preview_url — *gerar prévia (título/imagem/descrição) de links compartilhados no chat.*
 - [X] GET/PUT /\_matrix/client/v3/user/{userId}/account_data/{type} — *guardar preferências do usuário (tags de sala, favoritos) sincronizadas entre dispositivos.*
 - [X] GET/PUT /\_matrix/client/v3/user/{userId}/rooms/{roomId}/account_data/{type} — *igual ao acima, mas por sala (ex: marcar uma sala como silenciada).*
@@ -97,14 +97,14 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 Rotas essenciais para duas instâncias Dragonite conseguirem federar de forma correta e
 resiliente (incluindo reconciliação de estado após partições de rede).
 
-- [ ] GET /.well-known/matrix/server 
+- [X] GET /.well-known/matrix/server 
 - [x] GET /\_matrix/federation/v1/version
 - [x] GET /\_matrix/key/v2/server
 - [x] PUT /\_matrix/federation/v1/send/{txnId}
 - [x] GET /\_matrix/federation/v1/backfill/{roomId}
 - [X] POST /\_matrix/federation/v1/get_missing_events/{roomId} *(reconciliação de lacunas na DAG após partição/reconexão)*
 - [x] GET /\_matrix/federation/v1/event/{eventId}
-- [ ] GET /\_matrix/federation/v1/state/{roomId} *(recuperar estado completo de uma sala ao entrar via federação)*
+- [X] GET /\_matrix/federation/v1/state/{roomId} *(recuperar estado completo de uma sala ao entrar via federação)*
 - [X] GET /\_matrix/federation/v1/state_ids/{roomId} *(mesma coisa, mas só IDs — usado para resolução de estado eficiente)*
 - [x] GET /\_matrix/federation/v1/make_join/{roomId}/{userId}
 - [x] PUT /\_matrix/federation/v2/send_join/{roomId}/{eventId}

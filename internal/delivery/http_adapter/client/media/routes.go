@@ -31,6 +31,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/media/v3/upload", authMiddleware(http.HandlerFunc(h.uploadMedia)))
 	mux.Handle("GET /_matrix/client/v1/media/download/{serverName}/{mediaId}", authMiddleware(http.HandlerFunc(h.downloadMedia)))
 	mux.Handle("GET /_matrix/client/v1/media/thumbnail/{serverName}/{mediaId}", authMiddleware(http.HandlerFunc(h.thumbnailMedia)))
+	mux.Handle("GET /_matrix/client/v1/media/config", authMiddleware(http.HandlerFunc(h.mediaConfig)))
 }
 
 // uploadMedia recebe e armazena um arquivo de mídia enviado pelo cliente.
@@ -164,4 +165,14 @@ func isInlineSafe(contentType string) bool {
 		}
 	}
 	return false
+}
+
+// mediaConfig retorna a configuração pública do repositório de conteúdo do servidor
+// GET /_matrix/client/v1/media/config
+func (h *Handler) mediaConfig(w http.ResponseWriter, r *http.Request) {
+	maxSize := h.mediaService.MaxUploadSize()
+
+	httputil.WriteJSON(w, http.StatusOK, MediaConfigResponse{
+		MUploadSize: &maxSize,
+	})
 }

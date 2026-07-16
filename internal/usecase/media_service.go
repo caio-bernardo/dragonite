@@ -68,6 +68,12 @@ type UploadResult struct {
 	ContentURI string // MXC URI no formato mxc://<server>/<media_id>
 }
 
+// MaxUploadSize retorna o limite máximo de upload configurado, em bytes.
+// Usado por GET /_matrix/client/v1/media/config para informar o cliente
+func (s *MediaService) MaxUploadSize() int64 {
+	return s.maxSizeBytes
+}
+
 // Upload valida, armazena e registra um arquivo de mídia.
 func (s *MediaService) Upload(ctx context.Context, params UploadParams) (*UploadResult, error) {
 	// Rejeição rápida se Content-Length já é conhecido e excede o limite
