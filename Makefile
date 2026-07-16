@@ -44,6 +44,18 @@ clean:
 	@echo "Cleaning..."
 	@rm -f main
 
+# Create element client
+client:
+	@docker run --name local-element -d -p '8070:80' 'vectorim/element-web:latest'
+
+# Drop element client
+drop-client:
+	@docker rm -f local-element
+
+# Open element client in browser
+open-client: client
+	@xdg-open 'http://localhost:8070'
+
 # Live Reload
 watch:
 	@if command -v air > /dev/null; then \
@@ -61,4 +73,5 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run test clean watch docker-run docker-down itest
+
+.PHONY: all build run test clean watch docker-run docker-down itest client drop-client open-client
