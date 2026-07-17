@@ -170,7 +170,7 @@ func (s *PostgresStorage) SaveEvento(ctx context.Context, event *domain.Evento) 
 		`INSERT INTO Evento (id_evento, tipo, id_canal, sender,
 		origin_server_ts, content, state_key, prev_eventos, auth_eventos, depth,
 		hashes, signatures, unsigned)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (id_evento) DO NOTHING`,
+			VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, '{}'::text[]), COALESCE($9, '{}'::text[]), $10, $11, $12, $13) ON CONFLICT (id_evento) DO NOTHING`,
 		event.ID, event.Tipo, event.CanalID, event.Sender,
 		event.OrigemServidorTS, event.Content, event.StateKey,
 		event.PrevEventos, event.AuthEventos, event.Depth, event.Hashes,
