@@ -11,7 +11,7 @@ type WellKnownServer struct {
 }
 
 func ResolveWellKnown(server string) (string, error) {
-	url := fmt.Sprintf("https://%s/.well-known/matrix/server", server)
+	url := fmt.Sprintf("http://%s/.well-known/matrix/server", server)
 
 	client := &http.Client{}
 	resp, err := client.Get(url)
