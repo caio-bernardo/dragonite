@@ -110,11 +110,11 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 	// 1. Fetch the Join Rules
 	joinRule, err := s.canalRepo.GetJoinRule(ctx, roomID)
 	if err != nil {
-		return fmt.Errorf("room not found or missing join rules")
+		return fmt.Errorf("Failure: %w", err)
 	}
 
 	// 2. Validate Access
-	if joinRule == "invite" {
+	if joinRule == "invite" || joinRule == "private" {
 		// They MUST have a pending invite in our database
 		status, _ := s.canalRepo.GetUserMembership(ctx, roomID, userID)
 		if status != "invite" {

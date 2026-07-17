@@ -27,6 +27,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/room_keys/version", authMiddleware(http.HandlerFunc(h.getLatestVersion)))
 	mux.Handle("POST /_matrix/client/v3/room_keys/version", authMiddleware(http.HandlerFunc(h.createVersion)))
 	mux.Handle("GET /_matrix/client/v3/room_keys/keys", authMiddleware(http.HandlerFunc(h.getRoomKeys)))
+	mux.Handle("GET /_matrix/client/v3/room_keys/keys/{roomID}", authMiddleware(http.HandlerFunc(h.getRoomKeys)))
 	mux.Handle("PUT /_matrix/client/v3/room_keys/keys", authMiddleware(http.HandlerFunc(h.putRoomKeys)))
 	mux.Handle("DELETE /_matrix/client/v3/room_keys/keys", authMiddleware(http.HandlerFunc(h.deleteRoomKeys)))
 }

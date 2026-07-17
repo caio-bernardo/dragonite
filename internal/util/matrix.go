@@ -22,7 +22,7 @@ func CreateRoomID(serverName string) string {
 }
 
 func ExtractDomainFromUserID(userID string) string {
-	parts := strings.Split(userID, ":")
+	parts := strings.SplitN(userID, ":", 2)
 	if len(parts) == 2 {
 		return parts[1]
 	}

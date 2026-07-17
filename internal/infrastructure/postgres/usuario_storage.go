@@ -85,7 +85,7 @@ func (s *PostgresStorage) UpdateProfile(ctx context.Context, profile domain.Prof
 }
 
 func (s *PostgresStorage) SearchProfiles(ctx context.Context, filter usecase.SearchFilter) ([]domain.Profile, error) {
-	query := "SELECT fk_usuario_id, nome, foto_url FROM Profile WHERE nome ILIKE $1 LIMIT $2 OFFSET $3"
+	query := "SELECT fk_usuario_id, nome, foto_url FROM Profile WHERE nome ILIKE $1 OR fk_usuario_id ILIKE $1 LIMIT $2 OFFSET $3"
 	termPattern := fmt.Sprintf("%%%s%%", filter.Term)
 	offset := 0
 	if filter.NextToken != "" {

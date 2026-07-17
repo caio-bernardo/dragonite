@@ -16,7 +16,7 @@ type WellKnowServerResponse struct {
 // isRemoteUser returns true if the user is remote (i.e. not on the same server)
 func IsRemoteUser(userID, serverName string) bool {
 
-	parts := strings.Split(userID, ":")
+	parts := strings.SplitN(userID, ":", 2)
 	if len(parts) != 2 {
 		return false
 	}
@@ -33,7 +33,7 @@ func ResolveServerName(serverName string) (string, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	// Tentar o /.well-known/matrix/server
-	wellKnownURL := "https://" + serverName + "/.well-known/matrix/server"
+	wellKnownURL := "http://" + serverName + "/.well-known/matrix/server"
 	resp, err := client.Get(wellKnownURL)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		defer resp.Body.Close()
