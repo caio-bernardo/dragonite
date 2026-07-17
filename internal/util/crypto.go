@@ -54,7 +54,7 @@ func SignMatrixEvent(event *domain.Evento, serverName, keyID string, privateKey 
 	// Formato: { "nome_do_servidor": { "ed25519:kid": "assinatura_base64" } }
 	sigObject := map[string]map[string]string{
 		serverName: {
-			fmt.Sprintf("ed25519:%s", keyID): encodedSig,
+			fmt.Sprintf("%s", keyID): encodedSig,
 		},
 	}
 
@@ -82,14 +82,14 @@ func GenerateS2SAuthHeader(serverName, keyID string, privateKey ed25519.PrivateK
 
 	encodedSig := base64.RawStdEncoding.EncodeToString(signature)
 
-	authHeader := fmt.Sprintf(`X-Matrix origin="%s",key="ed25519:%s",sig="%s"`, serverName, keyID, encodedSig)
+	authHeader := fmt.Sprintf(`X-Matrix origin="%s",key="%s",sig="%s"`, serverName, keyID, encodedSig)
 
 	return authHeader, nil
 }
 
 // FetchRemoteServerKey busca a chave pública ed25519 de um servidor Matrix remoto
 func FetchRemoteServerKey(serverName string) (string, ed25519.PublicKey, error) {
-	url := fmt.Sprintf("https://%s/_matrix/key/v2/server", serverName)
+	url := fmt.Sprintf("http://%s/_matrix/key/v2/server", serverName)
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to fetch key from %s: %w", serverName, err)

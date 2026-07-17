@@ -1,0 +1,15 @@
+{
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "http://localhost:8000",
+      "server_name": "localhost:8000"
+    }
+  },
+  "features": {
+    "feature_cross_signing_and_backup": false
+  },
+  "setting_defaults": {
+    "custom_themes": [],
+    "fallbackEncryption": false
+  }
+}

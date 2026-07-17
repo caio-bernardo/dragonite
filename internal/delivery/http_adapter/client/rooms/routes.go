@@ -49,6 +49,7 @@ func NewHandler(
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
 	// Não requer autenticação (spec permite listagem pública sem token)
 	mux.HandleFunc("POST /_matrix/client/v3/publicRooms", h.getPublicRooms)
+	mux.HandleFunc("GET /_matrix/client/v3/publicRooms", h.getPublicRooms)
 
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/members", authMiddleware(http.HandlerFunc(h.getRoomMembers)))
 	// Requerem autenticação
@@ -220,7 +221,6 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 		// Execute the Outbound Federated Join
 		err := h.roomMembershipService.JoinRemoteRoom(ctx, userID, roomID, remoteServer)
 		if err != nil {
-			log.Printf("[ERROR] POST /rooms/%s/join (Federated): %v", roomID, err)
 			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to federate join remote room")
 			return
 		}
@@ -231,7 +231,7 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 
 	err := h.roomMembershipService.JoinLocalRoom(ctx, userID, roomID)
 	if err != nil {
-		log.Printf("[ERROR] POST /rooms/%s/join: %v", roomID, err)
+		log.Printf("[ERROR] POST /join/%s: %v", roomID, err)
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to join room")
 		return
 	}

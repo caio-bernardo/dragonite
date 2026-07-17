@@ -302,7 +302,7 @@ func (s *PostgresStorage) SaveAlias(ctx context.Context, roomID, fullAlias strin
 
 func (s *PostgresStorage) GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error) {
 	query := `
-        SELECT DISTINCT split_part(id_usuario, ':', 2) AS domain
+        SELECT DISTINCT substr(id_usuario, strpos(id_usuario, ':') + 1) AS domain
         FROM Canal_Membership
         WHERE id_canal = $1 AND membership_type IN ('join', 'invite')
     `
