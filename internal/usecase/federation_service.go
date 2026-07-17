@@ -146,7 +146,7 @@ func (f *FederationService) sendTransaction(targetHost, dest string, event domai
 		return fmt.Errorf("failed to generate auth header: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequest("PUT", reqURL, bytes.NewBuffer(txnBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -342,7 +342,7 @@ func (f *FederationService) fetchMissingEvents(ctx context.Context, originServer
 		return nil, fmt.Errorf("falha ao assinar requisição de backfill: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, err
@@ -649,7 +649,7 @@ func (f *FederationService) FetchRemoteMedia(ctx context.Context, destServerName
 		return nil, "", "", fmt.Errorf("failed to sign media request: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to build request: %w", err)
@@ -743,7 +743,7 @@ func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, room
 		return nil, fmt.Errorf("failed to sign make_join request: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -813,12 +813,13 @@ func (f *FederationService) SendInviteCall(ctx context.Context, remoteServer, ro
 		return nil, fmt.Errorf("failed to canonicalize invite payload: %w", err)
 	}
 
+	fmt.Printf("[DEBUG] keyId: %s privateKey: %s", f.keyID, f.privateKey)
 	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "PUT", uri, remoteServer, payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign invite request: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, err
@@ -861,6 +862,22 @@ func (f *FederationService) SendInviteCall(ctx context.Context, remoteServer, ro
 	return &signedEvent, nil
 }
 
+type SendJoinRequest struct {
+	Content        json.RawMessage `json:"content"`
+	Origin         string          `json:"origin"`
+	OriginServerTS int64           `json:"origin_server_ts"`
+	Sender         string          `json:"sender"`
+	StateKey       string          `json:"state_key"`
+	Type           string          `json:"type"`
+	RoomID         string          `json:"room_id"`
+	EventID        string          `json:"event_id"`
+	Signatures     json.RawMessage `json:"signatures"`
+
+	Depth      int64    `json:"depth"`
+	PrevEvents []string `json:"prev_events"`
+	AuthEvents []string `json:"auth_events"`
+}
+
 // SendJoinCall hits PUT /_matrix/federation/v1/send_join/{roomId}/{eventId}
 func (f *FederationService) SendJoinCall(ctx context.Context, remoteServer, roomID string, signedEvent *domain.Evento) (*OutboundSendJoinResponse, error) {
 	targetHost, err := util.ResolveServerName(remoteServer)
@@ -870,7 +887,27 @@ func (f *FederationService) SendJoinCall(ctx context.Context, remoteServer, room
 
 	uri := fmt.Sprintf("/_matrix/federation/v1/send_join/%s/%s", roomID, signedEvent.ID)
 
-	payloadBytes, err := util.CanonicalJSON(signedEvent)
+	payload := SendJoinRequest{
+		Content:        signedEvent.Content,
+		Origin:         f.serverName,
+		OriginServerTS: signedEvent.OrigemServidorTS,
+		Sender:         signedEvent.Sender,
+		Type:           "m.room.member",
+		RoomID:         roomID,
+		EventID:        signedEvent.ID,
+		Signatures:     signedEvent.Signatures,
+		Depth:          signedEvent.Depth,
+		PrevEvents:     signedEvent.PrevEventos,
+		AuthEvents:     signedEvent.AuthEventos,
+	}
+
+	if signedEvent.StateKey != nil {
+		payload.StateKey = *signedEvent.StateKey
+	} else {
+		payload.StateKey = ""
+	}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -880,7 +917,7 @@ func (f *FederationService) SendJoinCall(ctx context.Context, remoteServer, room
 		return nil, fmt.Errorf("failed to sign send_join request: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, err
@@ -929,7 +966,7 @@ func (f *FederationService) QueryDirectory(ctx context.Context, remoteServer, ro
 		return "", nil, fmt.Errorf("failed to sign query/directory request: %w", err)
 	}
 
-	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	reqURL := fmt.Sprintf("http://%s%s", targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return "", nil, err
