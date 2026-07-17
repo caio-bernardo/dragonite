@@ -107,11 +107,13 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	eventsToSave = append(eventsToSave, customEvents...)
 
 	// invites
-	inviteEvents := make(map[string]domain.Evento)
+	inviteEvents := make(map[string]*domain.Evento)
+
 	for _, invitee := range props.Invite {
-		inviteEvent := buildInviteEvent(roomID, props.CreatorID, invitee)
-		eventsToSave = append(eventsToSave, inviteEvent)
-		inviteEvents[invitee] = *inviteEvent
+    	inviteEvent := buildInviteEvent(roomID, props.CreatorID, invitee)
+    	eventsToSave = append(eventsToSave, inviteEvent)
+    	// Guarde a referência (o ponteiro), não a cópia do valor
+    	inviteEvents[invitee] = inviteEvent
 	}
 
 	if err := linkAndHashGenesis(eventsToSave, s.serverName, s.keyID, s.privateKey); err != nil {
@@ -176,7 +178,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	for invitee, inviteEv := range inviteEvents {
 		// notifica servidores remotos
 		if util.IsRemoteUser(invitee, s.serverName) {
-			_ = s.fedService.QueueOutgoing(ctx, inviteEv)
+			_ = s.fedService.QueueOutgoing(ctx, *inviteEv)
 		}
 	}
 
