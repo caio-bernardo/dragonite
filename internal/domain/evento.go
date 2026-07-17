@@ -22,7 +22,7 @@ type Evento struct {
 	Depth       int64    `json:"depth,omitempty"`
 
 	Hashes     json.RawMessage `json:"hashes,omitempty"`
-	Signatures json.RawMessage `json:"signature,omitempty"`
+	Signatures json.RawMessage `json:"signatures,omitempty"`
 	Unsigned   json.RawMessage `json:"unsigned,omitempty"` // dados adicionados pelo servidor
 }
 
