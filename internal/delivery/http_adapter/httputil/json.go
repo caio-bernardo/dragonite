@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
@@ -73,7 +72,7 @@ func WriteError(w http.ResponseWriter, status int, message MatrixErrorResponse) 
 }
 
 func WriteMatrixError(w http.ResponseWriter, status int, errcode MatrixErrorCode, message string) {
-	log.Printf("[%s] [DEBUG] MatrixError: %s - %s", time.Now().Format("2006-01-02 15:04:05"), errcode, message)
+	log.Printf("[DEBUG] MatrixError: %s - %s", errcode, message)
 	WriteJSON(w, status, MatrixErrorResponse{
 		ErrCode: errcode,
 		Message: message,
