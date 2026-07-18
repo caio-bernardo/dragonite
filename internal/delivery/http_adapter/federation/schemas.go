@@ -188,3 +188,13 @@ type CrossSigningKeyResponse struct {
 	Usage      []string        `json:"usage"`
 	UserID     string          `json:"user_id"`
 }
+
+// user/keys/claim
+
+type UserKeysClaimRequest struct {
+	OneTimeKeys map[string]map[string]string `json:"one_time_keys"`
+}
+
+type UserKeysClaimResponse struct {
+	OneTimeKeys map[string]map[string]map[string]json.RawMessage `json:"one_time_keys"`
+}

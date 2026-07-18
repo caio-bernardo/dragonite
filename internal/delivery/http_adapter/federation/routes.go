@@ -66,6 +66,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /_matrix/federation/v1/query/profile", auth(http.HandlerFunc(h.getProfile)))
 	mux.Handle("GET /_matrix/federation/v1/query/directory", auth(http.HandlerFunc(h.getDirectory)))
 	mux.Handle("POST /_matrix/federation/v1/user/keys/query", auth(http.HandlerFunc(h.postUserKeysQuery)))
+	mux.Handle("POST /_matrix/federation/v1/user/keys/claim", auth(http.HandlerFunc(h.postUserKeysClaim)))
 	mux.Handle("PUT /_matrix/federation/v2/invite/{roomId}/{eventId}", auth(http.HandlerFunc(h.putInvite)))
 	mux.Handle("PUT /_matrix/federation/v1/send/{txnId}", auth(http.HandlerFunc(h.putSendTxn)))
 	mux.Handle("GET /_matrix/federation/v1/backfill/{roomId}", auth(http.HandlerFunc(h.getBackfill)))
@@ -255,6 +256,32 @@ func (h *Handler) postUserKeysQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// postUserKeysClaim reivindica one-time keys (ou fallback key, se as OTKs se esgotaram) de
+// dispositivos locais pedidos por um servidor remoto
+// POST /_matrix/federation/v1/user/keys/claim
+func (h *Handler) postUserKeysClaim(w http.ResponseWriter, r *http.Request) {
+	var req UserKeysClaimRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+		return
+	}
+
+	// Servidores remotos só devem reivindicar chaves de usuários locais a este homeserver;
+	// entradas de outros domínios são ignoradas silenciosamente.
+	localRequested := make(map[string]map[string]string, len(req.OneTimeKeys))
+	for userID, devices := range req.OneTimeKeys {
+		parts := strings.SplitN(userID, ":", 2)
+		if len(parts) != 2 || parts[1] != h.serverName {
+			continue
+		}
+		localRequested[userID] = devices
+	}
+
+	result := h.keysService.ClaimKeys(r.Context(), localRequested)
+
+	httputil.WriteJSON(w, http.StatusOK, UserKeysClaimResponse{OneTimeKeys: result.OneTimeKeys})
 }
 
 // parseXMatrixHeader decompõe o cabeçalho Authorization: X-Matrix k="v",... num map.
