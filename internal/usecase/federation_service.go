@@ -113,14 +113,14 @@ func (f *FederationService) sendWithRetry(dest string, event domain.Evento) {
 	}
 
 	// Backoff exponencial
-	maxRetries := 5
+	maxRetries := 5 // Num servidor de verdade deveria ser 16 ou 17 retries
 	for i := range maxRetries {
 		err := f.sendTransaction(targetHost, dest, event)
 		if err == nil {
 			return
 		}
 		log.Printf("[Federation] Retry %d/%d failed: %v", i+1, maxRetries, err)
-		// famos a requisição de novo em 2^i segundos
+		// fazemos a requisição de novo em 2^i segundos
 		time.Sleep(time.Duration(2<<i) * time.Second)
 	}
 }
@@ -234,6 +234,12 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 		for _, histPDU := range historicalEvents {
 
 			histID, _ := util.HashMatrixEvent(&histPDU)
+
+			// Compatibilidade com o matrix v3
+			if histPDU.ID == "" {
+				histPDU.ID = histID
+			}
+
 			if histID == histPDU.ID {
 				_ = f.uow.Execute(ctx, func(txCtx context.Context) error {
 					err = f.eventoStore.SaveEvento(txCtx, &histPDU)
@@ -329,8 +335,12 @@ func (f *FederationService) fetchMissingEvents(ctx context.Context, originServer
 
 	uri := fmt.Sprintf("/_matrix/federation/v1/get_missing_events/%s", roomID)
 
+	knownExtremities, _ := f.canalStore.GetForwardExtremities(ctx, roomID)
+	if knownExtremities == nil {
+		knownExtremities = []string{}
+	}
 	payload := GetMissingEventsRequest{
-		EarliestEvents: []string{},
+		EarliestEvents: knownExtremities,
 		LatestEvents:   missingPrev,
 		Limit:          10, // busca até 10 eventos no passado
 		MinDepth:       0,

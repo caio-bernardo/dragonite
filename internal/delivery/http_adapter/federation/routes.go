@@ -993,7 +993,6 @@ func (h *Handler) postGetMissingEvents(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.fedService.HandleGetMissingEvents(ctx, roomID, req)
 	if err != nil {
-		log.Printf("[ERROR] POST /get_missing_events: %v", err)
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to compute missing events")
 		return
 	}
