@@ -90,14 +90,14 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	}
 	var rulesEvent *domain.Evento
 	switch present {
-		case "public_chat":
-    rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "public")
-		case "private_chat":
-    // ALTERADO DE "private" PARA "invite"
-    rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "invite")
-		default:
-    // ALTERADO DE "private" PARA "invite"
-    rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "invite")
+	case "public_chat":
+		rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "public")
+	case "private_chat":
+		// ALTERADO DE "private" PARA "invite"
+		rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "invite")
+	default:
+		// ALTERADO DE "private" PARA "invite"
+		rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "invite")
 	}
 	eventsToSave = append(eventsToSave, rulesEvent)
 
@@ -124,10 +124,10 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	inviteEvents := make(map[string]*domain.Evento)
 
 	for _, invitee := range props.Invite {
-    	inviteEvent := buildInviteEvent(roomID, props.CreatorID, invitee)
-    	eventsToSave = append(eventsToSave, inviteEvent)
-    	// Guarde a referência (o ponteiro), não a cópia do valor
-    	inviteEvents[invitee] = inviteEvent
+		inviteEvent := buildInviteEvent(roomID, props.CreatorID, invitee)
+		eventsToSave = append(eventsToSave, inviteEvent)
+		// Guarde a referência (o ponteiro), não a cópia do valor
+		inviteEvents[invitee] = inviteEvent
 	}
 
 	if err := linkAndHashGenesis(eventsToSave, s.serverName, s.keyID, s.privateKey); err != nil {

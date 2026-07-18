@@ -33,7 +33,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [X] GET /\_matrix/client/v3/account/whoami
 - [x] GET /\_matrix/client/v3/capabilities *(mock — retorna só `m.room_versions` com default/available "11")*
 - [x] POST /\_matrix/client/v3/user/{userId}/filter *(mock — retorna `filter_id` fixo, sem aplicar filtro de verdade)*
-- [x] GET /\_matrix/client/v3/sync
+- [x] GET /\_matrix/client/v3/sync *(`to_device` e `device_one_time_keys_count` implementados; `device_lists.changed/left` ainda não)*
 - [X] POST /\_matrix/client/v3/createRoom 
 - [X] POST /\_matrix/client/v3/rooms/{roomId}/join
 - [X] POST /\_matrix/client/v3/rooms/{roomId}/leave 
@@ -57,10 +57,13 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [X] GET /\_matrix/client/v3/room_keys/keys
 - [X] PUT /\_matrix/client/v3/room_keys/keys *(upsert last-write-wins; sem a regra de "manter a melhor chave" da spec)*
 - [X] DELETE /\_matrix/client/v3/room_keys/keys
-- [X] POST /_matrix/client/v3/keys/device_signing/upload *(feito só mock)*
-- [X] POST /_matrix/client/v3/keys/signatures/upload *(feito só mock)*
-- [X] POST /_matrix/client/v3/keys/upload *(feito só mock)*
-- [X] POST /_matrix/client/v3/keys/query  *(feito só mock)*
+- [X] POST /_matrix/client/v3/keys/device_signing/upload
+- [X] POST /_matrix/client/v3/keys/signatures/upload
+- [X] POST /_matrix/client/v3/keys/upload 
+- [X] POST /_matrix/client/v3/keys/query *(master_keys/self_signing_keys agora federados via POST /_matrix/federation/v1/user/keys/query; user_signing_key permanece só local, por design da spec)*
+- [x] POST /_matrix/client/v3/keys/claim *(federado via POST /_matrix/federation/v1/user/keys/claim)*
+- [x] GET /_matrix/client/v3/keys/changes
+- [x] PUT /_matrix/client/v3/sendToDevice/{eventType}/{txnId} *(idempotência por txnId, expande device_id "*", federa via EDU m.direct_to_device pra usuários remotos)*
 
 ### Opcionais
 
@@ -109,7 +112,7 @@ resiliente (incluindo reconciliação de estado após partições de rede).
 - [X] GET /.well-known/matrix/server 
 - [x] GET /\_matrix/federation/v1/version
 - [x] GET /\_matrix/key/v2/server
-- [x] PUT /\_matrix/federation/v1/send/{txnId}
+- [x] PUT /\_matrix/federation/v1/send/{txnId} *(PDUs completos; EDUs só `m.direct_to_device` por enquanto)*
 - [x] GET /\_matrix/federation/v1/backfill/{roomId}
 - [X] POST /\_matrix/federation/v1/get_missing_events/{roomId} *(reconciliação de lacunas na DAG após partição/reconexão)*
 - [x] GET /\_matrix/federation/v1/event/{eventId}
@@ -124,6 +127,8 @@ resiliente (incluindo reconciliação de estado após partições de rede).
 - [x] GET /\_matrix/federation/v1/publicRooms
 - [x] POST /\_matrix/federation/v1/publicRooms
 - [x] GET /\_matrix/federation/v1/media/download/{mediaId}
+- [x] POST /\_matrix/federation/v1/user/keys/query
+- [x] POST /\_matrix/federation/v1/user/keys/claim
 
 ### Opcionais
 
@@ -139,7 +144,7 @@ resiliente (incluindo reconciliação de estado após partições de rede).
 - [ ] GET /\_matrix/federation/v1/hierarchy/{roomId} — *navegar espaços (spaces) e sub-salas aninhadas entre servidores.*
 - [ ] GET /\_matrix/federation/v1/media/thumbnail/{mediaId} — *miniatura de mídia remota via federação; hoje o download remoto já serve o arquivo original, então é só otimização de banda.*
 - [ ] GET /\_matrix/federation/v1/openid/userinfo — *permitir que um serviço externo valide a identidade de um usuário via OpenID Connect emitido pelo homeserver.*
-- [ ] GET /\_matrix/federation/v1/user/devices/{userId} e POST /user/keys/claim, /user/keys/query — *parte da criptografia ponta-a-ponta entre servidores; só relevante se E2E entrar no escopo.*
+- [ ] GET /\_matrix/federation/v1/user/devices/{userId} — *lista os device IDs + stream_id de um usuário local; usado por outros servidores pra saber se precisam re-consultar `/keys/query`. `query`/`claim` já cobertos acima.
 - [ ] POST /\_matrix/policy/v1/sign — *assinar políticas de moderação de conteúdo compartilhadas entre servidores (feature mais recente da spec).*
 
 ---

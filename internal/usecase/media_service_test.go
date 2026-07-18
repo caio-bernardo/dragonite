@@ -35,7 +35,7 @@ func (f *fakeFileStorage) Delete(_ context.Context, _ string) error {
 type fakeMidiaStorage struct {
 	saveErr    error
 	savedMidia *domain.Midia
-	getResult  *domain.Midia 
+	getResult  *domain.Midia
 	getErr     error
 }
 
@@ -59,7 +59,7 @@ type fakeRemoteFetcher struct {
 		mediaID    string
 	}
 }
- 
+
 func (f *fakeRemoteFetcher) FetchRemoteMedia(_ context.Context, destServerName, mediaID string) (io.ReadCloser, string, string, error) {
 	f.calledWith.serverName = destServerName
 	f.calledWith.mediaID = mediaID
@@ -210,7 +210,7 @@ func TestMediaServiceUploadDefaultMaxSize(t *testing.T) {
 }
 
 // Testes de Download / Thumbnail
- 
+
 func TestMediaServiceDownloadLocalSuccess(t *testing.T) {
 	midiaStore := &fakeMidiaStorage{getResult: &domain.Midia{
 		IDMidia:     "abc123",
@@ -219,13 +219,13 @@ func TestMediaServiceDownloadLocalSuccess(t *testing.T) {
 		UploadName:  "avatar.png",
 	}}
 	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
- 
+
 	result, err := svc.Download(context.Background(), "example.com", "abc123")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	defer result.Content.Close()
- 
+
 	if result.ContentType != "image/png" {
 		t.Fatalf("expected content_type image/png, got %s", result.ContentType)
 	}
@@ -233,18 +233,18 @@ func TestMediaServiceDownloadLocalSuccess(t *testing.T) {
 		t.Fatalf("expected filename avatar.png, got %s", result.Filename)
 	}
 }
- 
+
 func TestMediaServiceDownloadLocalNotFound(t *testing.T) {
 	// GetMidiaByID retorna nil, nil quando não encontrado, deve virar ErrMediaNotFound
 	midiaStore := &fakeMidiaStorage{getResult: nil}
 	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
- 
+
 	_, err := svc.Download(context.Background(), "example.com", "nao-existe")
 	if !errors.Is(err, ErrMediaNotFound) {
 		t.Fatalf("expected ErrMediaNotFound, got %v", err)
 	}
 }
- 
+
 func TestMediaServiceDownloadRemoteProxiesToFetcher(t *testing.T) {
 	fetcher := &fakeRemoteFetcher{
 		content:     "conteúdo remoto",
@@ -252,13 +252,13 @@ func TestMediaServiceDownloadRemoteProxiesToFetcher(t *testing.T) {
 		filename:    "clip.mp4",
 	}
 	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, fetcher)
- 
+
 	result, err := svc.Download(context.Background(), "outroservidor.com", "xyz789")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	defer result.Content.Close()
- 
+
 	if fetcher.calledWith.serverName != "outroservidor.com" {
 		t.Fatalf("expected fetcher called with outroservidor.com, got %s", fetcher.calledWith.serverName)
 	}
@@ -268,33 +268,33 @@ func TestMediaServiceDownloadRemoteProxiesToFetcher(t *testing.T) {
 	if result.ContentType != "video/mp4" {
 		t.Fatalf("expected content_type video/mp4, got %s", result.ContentType)
 	}
- 
+
 	body, _ := io.ReadAll(result.Content)
 	if string(body) != "conteúdo remoto" {
 		t.Fatalf("expected proxied content to match, got %s", string(body))
 	}
 }
- 
+
 func TestMediaServiceDownloadRemoteWithoutFetcherIsNotFound(t *testing.T) {
 	// remoteFetcher nil (federação de mídia desabilitada) deve virar ErrMediaNotFound, não pânico
 	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, nil)
- 
+
 	_, err := svc.Download(context.Background(), "outroservidor.com", "xyz789")
 	if !errors.Is(err, ErrMediaNotFound) {
 		t.Fatalf("expected ErrMediaNotFound when remoteFetcher is nil, got %v", err)
 	}
 }
- 
+
 func TestMediaServiceDownloadRemoteFetcherError(t *testing.T) {
 	fetcher := &fakeRemoteFetcher{err: errors.New("servidor remoto offline")}
 	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, fetcher)
- 
+
 	_, err := svc.Download(context.Background(), "outroservidor.com", "xyz789")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
- 
+
 func TestMediaServiceThumbnailReusesDownload(t *testing.T) {
 	// Thumbnail deve devolver exatamente o mesmo resultado que Download (sem redimensionar)
 	midiaStore := &fakeMidiaStorage{getResult: &domain.Midia{
@@ -304,13 +304,13 @@ func TestMediaServiceThumbnailReusesDownload(t *testing.T) {
 		UploadName:  "photo.jpg",
 	}}
 	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
- 
+
 	result, err := svc.Thumbnail(context.Background(), "example.com", "abc123")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	defer result.Content.Close()
- 
+
 	if result.ContentType != "image/jpeg" {
 		t.Fatalf("expected content_type image/jpeg (original, no resizing), got %s", result.ContentType)
 	}

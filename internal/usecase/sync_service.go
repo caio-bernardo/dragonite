@@ -12,18 +12,22 @@ import (
 )
 
 type SyncService struct {
-	userStore  UsuarioStorage
-	eventStore EventoStorage
-	canalStore CanalStorage
-	notifier   Notifier
+	userStore     UsuarioStorage
+	eventStore    EventoStorage
+	canalStore    CanalStorage
+	notifier      Notifier
+	toDeviceStore ToDeviceStorage
+	keysStore     KeysStorage
 }
 
-func NewSyncService(userStore UsuarioStorage, eventStore EventoStorage, canalStore CanalStorage, notifier Notifier) *SyncService {
+func NewSyncService(userStore UsuarioStorage, eventStore EventoStorage, canalStore CanalStorage, notifier Notifier, toDeviceStore ToDeviceStorage, keysStore KeysStorage) *SyncService {
 	return &SyncService{
-		userStore:  userStore,
-		eventStore: eventStore,
-		canalStore: canalStore,
-		notifier:   notifier,
+		userStore:     userStore,
+		eventStore:    eventStore,
+		canalStore:    canalStore,
+		notifier:      notifier,
+		toDeviceStore: toDeviceStore,
+		keysStore:     keysStore,
 	}
 }
 
@@ -33,9 +37,21 @@ type SyncAccountData struct {
 
 // Resposta GET /_matrix/client/v3/sync
 type SyncClientResponse struct {
-	AccountData SyncAccountData  `json:"account_data"`
-	NextBatch   domain.SyncToken `json:"next_batch"`
-	Rooms       RoomsSync        `json:"rooms"`
+	AccountData    SyncAccountData  `json:"account_data"`
+	DeviceOTKCount map[string]int   `json:"device_one_time_keys_count,omitempty"`
+	NextBatch      domain.SyncToken `json:"next_batch"`
+	Rooms          RoomsSync        `json:"rooms"`
+	ToDevice       *ToDeviceSync    `json:"to_device,omitempty"`
+}
+
+type ToDeviceSync struct {
+	Events []ToDeviceEventSync `json:"events"`
+}
+
+type ToDeviceEventSync struct {
+	Content json.RawMessage `json:"content"`
+	Sender  string          `json:"sender"`
+	Type    string          `json:"type"`
 }
 
 type RoomsSync struct {
@@ -85,8 +101,8 @@ type LeftRoom struct {
 	Timeline Timeline `json:"timeline"`
 }
 
-func (s *SyncService) SyncClient(ctx context.Context, userID string, since domain.SyncToken, timeout time.Duration) (SyncClientResponse, error) {
-	response, err := s.GetEventsSince(ctx, userID, since)
+func (s *SyncService) SyncClient(ctx context.Context, userID string, deviceID string, since domain.SyncToken, timeout time.Duration) (SyncClientResponse, error) {
+	response, err := s.GetEventsSince(ctx, userID, deviceID, since)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return SyncClientResponse{}, nil
@@ -105,6 +121,7 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, since domai
 				NextBatch: since,
 			}, err
 		}
+		nextBatch.ToDevicePosition = response.NextBatch.ToDevicePosition
 		response.NextBatch = nextBatch
 		return response, nil
 	}
@@ -124,7 +141,7 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, since domai
 					NextBatch: since,
 				}, err
 			}
-
+			nextBatch.ToDevicePosition = response.NextBatch.ToDevicePosition
 			response.NextBatch = nextBatch
 			return response, nil
 		}
@@ -136,7 +153,7 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, since domai
 		return SyncClientResponse{NextBatch: since}, err
 	}
 
-	response, err = s.GetEventsSince(ctx, userID, since)
+	response, err = s.GetEventsSince(ctx, userID, deviceID, since)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return SyncClientResponse{}, nil
@@ -153,6 +170,7 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, since domai
 			NextBatch: since,
 		}, err
 	}
+	nextBatch.ToDevicePosition = response.NextBatch.ToDevicePosition
 	response.NextBatch = nextBatch
 
 	return response, nil
@@ -185,6 +203,9 @@ func isResponseEmpty(response SyncClientResponse) bool {
 	if len(response.Rooms.Invite) > 0 || len(response.Rooms.Leave) > 0 {
 		return false
 	}
+	if response.ToDevice != nil && len(response.ToDevice.Events) > 0 {
+		return false
+	}
 	for _, room := range response.Rooms.Join {
 		if len(room.Timeline.Events) > 0 || len(room.State.Events) > 0 {
 			return false
@@ -193,7 +214,7 @@ func isResponseEmpty(response SyncClientResponse) bool {
 	return true
 }
 
-func (s *SyncService) GetEventsSince(ctx context.Context, userID string, since domain.SyncToken) (SyncClientResponse, error) {
+func (s *SyncService) GetEventsSince(ctx context.Context, userID string, deviceID string, since domain.SyncToken) (SyncClientResponse, error) {
 	accountData, err := s.userStore.GetGlobalAccountData(ctx, userID)
 	if err != nil {
 		return SyncClientResponse{
@@ -225,15 +246,71 @@ func (s *SyncService) GetEventsSince(ctx context.Context, userID string, since d
 		}, err
 	}
 
+	toDeviceSync, newToDevicePos, err := s.getToDeviceSync(ctx, userID, deviceID, since)
+	if err != nil {
+		log.Printf("failed to get to-device messages (user=%s device=%s): %v", userID, deviceID, err)
+		toDeviceSync = nil
+		newToDevicePos = since.ToDevicePosition
+	}
+
+	var otkCounts map[string]int
+	if deviceID != "" {
+		otkCounts, err = s.keysStore.CountOneTimeKeys(ctx, deviceID)
+		if err != nil {
+			log.Printf("failed to count one-time keys for device %s: %v", deviceID, err)
+			otkCounts = nil
+		}
+	}
+
+	nextBatchSoFar := since
+	nextBatchSoFar.ToDevicePosition = newToDevicePos
+
 	return SyncClientResponse{
-		AccountData: SyncAccountData{Events: accountData},
-		NextBatch:   since,
+		AccountData:    SyncAccountData{Events: accountData},
+		DeviceOTKCount: otkCounts,
+		NextBatch:      since,
 		Rooms: RoomsSync{
 			Invite: mapInvites,
 			Join:   mapJoined,
 			Leave:  mapLeft,
 		},
+		ToDevice: toDeviceSync,
 	}, nil
+}
+
+// getToDeviceSync apaga as mensagens já confirmadas (id <= since.ToDevicePosition) e busca as
+// próximas pendentes, com o limite de 100 recomendado pela spec
+func (s *SyncService) getToDeviceSync(ctx context.Context, userID, deviceID string, since domain.SyncToken) (*ToDeviceSync, int64, error) {
+	const toDeviceMessageLimit = 100
+
+	if deviceID == "" {
+		return nil, since.ToDevicePosition, nil
+	}
+
+	if since.ToDevicePosition > 0 {
+		if err := s.toDeviceStore.DeleteToDeviceMessagesUpTo(ctx, userID, deviceID, since.ToDevicePosition); err != nil {
+			return nil, since.ToDevicePosition, err
+		}
+	}
+
+	messages, err := s.toDeviceStore.GetToDeviceMessagesSince(ctx, userID, deviceID, since.ToDevicePosition, toDeviceMessageLimit)
+	if err != nil {
+		return nil, since.ToDevicePosition, err
+	}
+	if len(messages) == 0 {
+		return nil, since.ToDevicePosition, nil
+	}
+
+	events := make([]ToDeviceEventSync, len(messages))
+	maxID := since.ToDevicePosition
+	for i, m := range messages {
+		events[i] = ToDeviceEventSync{Content: m.Content, Sender: m.Sender, Type: m.Type}
+		if m.ID > maxID {
+			maxID = m.ID
+		}
+	}
+
+	return &ToDeviceSync{Events: events}, maxID, nil
 }
 
 func (s *SyncService) GetInviteRooms(ctx context.Context, userID string, since domain.SyncToken) (map[string]InvitedRoom, error) {

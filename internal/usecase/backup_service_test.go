@@ -13,8 +13,8 @@ type fakeBackupStorage struct {
 	created           *domain.VersaoBackup
 	createErr         error
 	nextID            int64
-	getResult 		  *domain.VersaoBackup
-	getErr    		  error
+	getResult         *domain.VersaoBackup
+	getErr            error
 	versionsByID      map[int64]*domain.VersaoBackup
 	keysByVersion     map[int64][]domain.ChaveBackup
 	getRoomKeysErr    error

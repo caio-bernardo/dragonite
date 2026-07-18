@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -162,4 +163,44 @@ type BackupStorage interface {
 	PutRoomKeys(ctx context.Context, versionID int64, keys []domain.ChaveBackup) (count int64, etag string, err error)
 	// DeleteRoomKeys apaga todas as chaves da versão e retorna a contagem (0) e o novo etag
 	DeleteRoomKeys(ctx context.Context, versionID int64) (count int64, etag string, err error)
+}
+
+// KeysStorage define as operações de persistência das chaves de identidade E2EE (device keys),
+// one-time keys e fallback keys dos dispositivos
+type KeysStorage interface {
+	UpsertDeviceKeys(ctx context.Context, keys domain.ChavesDispositivo) error
+	// GetDeviceKeys retorna as chaves dos dispositivos indicados de um usuário.
+	// Se deviceIDs for vazio, retorna as chaves de TODOS os dispositivos do usuário.
+	GetDeviceKeys(ctx context.Context, userID string, deviceIDs []string) ([]domain.ChavesDispositivo, error)
+
+	UpsertOneTimeKeys(ctx context.Context, deviceID string, keys []domain.ChaveUsoUnico) error
+	// ClaimOneTimeKey reivindica (e apaga) UMA one-time key.
+	ClaimOneTimeKey(ctx context.Context, deviceID, algorithm string) (*domain.ChaveUsoUnico, error)
+	// CountOneTimeKeys conta as one-time keys remanescentes, agrupadas por algoritmo
+	CountOneTimeKeys(ctx context.Context, deviceID string) (map[string]int, error)
+
+	UpsertFallbackKey(ctx context.Context, key domain.ChaveFallback) error
+	// ClaimFallbackKey retorna a fallback key do dispositivo pro algoritmo e a marca como usada
+	ClaimFallbackKey(ctx context.Context, deviceID, algorithm string) (*domain.ChaveFallback, error)
+
+	// UpsertCrossSigningKey insere ou substitui a chave de cross-signing do usuário para um uso (master/self_signing/user_signing)
+	UpsertCrossSigningKey(ctx context.Context, key domain.ChaveCrossSigning) error
+	// GetCrossSigningKeys retorna as chaves de cross-signing de um usuário, indexadas por uso
+	GetCrossSigningKeys(ctx context.Context, userID string) (map[string]domain.ChaveCrossSigning, error)
+
+	// MergeDeviceSignatures funde novas assinaturas nas já armazenadas de um dispositivo. false se o dispositivo não existir.
+	MergeDeviceSignatures(ctx context.Context, userID, deviceID string, newSignatures json.RawMessage) (bool, error)
+	// MergeCrossSigningSignatures funde novas assinaturas nas já armazenadas de uma chave de cross-signing,
+	// identificada pela chave pública crua. false se a chave não existir.
+	MergeCrossSigningSignatures(ctx context.Context, userID, publicKeyID string, newSignatures json.RawMessage) (bool, error)
+}
+
+// ToDeviceStorage define a persistência de mensagens send-to-device pendentes de entrega
+type ToDeviceStorage interface {
+	// InsertToDeviceMessages insere mensagens pendentes em lote (uma por dispositivo destinatário)
+	InsertToDeviceMessages(ctx context.Context, messages []domain.ToDeviceMessage) error
+	// GetToDeviceMessagesSince retorna até `limit` mensagens pendentes de um dispositivo com id > since, em ordem de chegada
+	GetToDeviceMessagesSince(ctx context.Context, userID, deviceID string, since int64, limit int) ([]domain.ToDeviceMessage, error)
+	// DeleteToDeviceMessagesUpTo apaga as mensagens já entregues (id <= upTo) de um dispositivo
+	DeleteToDeviceMessagesUpTo(ctx context.Context, userID, deviceID string, upTo int64) error
 }
