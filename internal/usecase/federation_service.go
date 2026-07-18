@@ -240,10 +240,6 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 					if err != nil {
 						return err
 					}
-					err = f.canalStore.UpdateForwardExtremities(txCtx, histPDU.CanalID, histPDU.ID, histPDU.PrevEventos)
-					if err != nil {
-						return err
-					}
 					if histPDU.StateKey != nil {
 						err = f.canalStore.UpsertCurrentState(txCtx, histPDU.CanalID, histPDU.Tipo, *histPDU.StateKey, histPDU.ID)
 						if err != nil {
@@ -292,6 +288,15 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 		if pdu.StateKey != nil {
 			if err := f.canalStore.UpsertCurrentState(txCtx, pdu.CanalID, pdu.Tipo, *pdu.StateKey, pdu.ID); err != nil {
 				return fmt.Errorf("falha ao atualizar estado da sala: %w", err)
+			}
+
+			if pdu.Tipo == "m.room.member" {
+				var content map[string]any
+				if err := json.Unmarshal(pdu.Content, &content); err == nil {
+					if membership, ok := content["membership"].(string); ok {
+						_ = f.canalStore.UpsertMembership(txCtx, pdu.CanalID, *pdu.StateKey, membership, pdu.ID)
+					}
+				}
 			}
 		}
 
@@ -400,7 +405,7 @@ func (f *FederationService) MakeJoin(ctx context.Context, roomID, userID string,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get join rule: %w", err)
 	}
-	if joinRule != "public" {
+	if joinRule != "public" && joinRule != "invite" {
 		return nil, types.ErrForbidden
 	}
 
