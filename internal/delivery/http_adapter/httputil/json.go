@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
@@ -89,4 +90,3 @@ func WriteMatrixErrorSoftLogout(w http.ResponseWriter, status int, errcode Matri
 		SoftLogout: true,
 	})
 }
-
