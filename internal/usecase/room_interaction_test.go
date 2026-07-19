@@ -7,12 +7,32 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 )
 
-func newTestRoomInteractionService(t *testing.T, canal *roomsvcFakeCanalStorage, evento *roomsvcFakeEventoStorage) *RoomInteractionService {
+type MockFederationCacheStorage struct {
+}
+
+func (m *MockFederationCacheStorage) SavePendingRetry(ctx context.Context, destServer string, event *domain.Evento, ttl time.Duration) error {
+	return m.SavePendingRetry(ctx, destServer, event, ttl)
+}
+
+func (m *MockFederationCacheStorage) GetAndClearPendingRetries(ctx context.Context, destServer string) ([]domain.Evento, error) {
+	return m.GetAndClearPendingRetries(ctx, destServer)
+}
+
+func (m *MockFederationCacheStorage) PushOutboundQueue(ctx context.Context, event domain.Evento) error {
+	return m.PushOutboundQueue(ctx, event)
+}
+
+func (m *MockFederationCacheStorage) PopOutboundQueue(ctx context.Context, timeout time.Duration) (*domain.Evento, error) {
+	return m.PopOutboundQueue(ctx, timeout)
+}
+
+func newTestRoomInteractionService(t *testing.T, canal *roomsvcFakeCanalStorage, evento *roomsvcFakeEventoStorage, fedCache *MockFederationCacheStorage) *RoomInteractionService {
 	t.Helper()
 	uow := &roomsvcFakeWorkUnit{}
 	authResolver := NewAuthRuleResolver(canal)
@@ -20,7 +40,7 @@ func newTestRoomInteractionService(t *testing.T, canal *roomsvcFakeCanalStorage,
 	if err != nil {
 		t.Fatalf("failed to generate test key: %v", err)
 	}
-	fedSvc := NewFederationService("example.com", "ed25519:1", priv, canal, evento, uow, nil, nil)
+	fedSvc := NewFederationService("example.com", "ed25519:1", priv, canal, evento, uow, nil, nil, fedCache)
 	return NewRoomInteractionService(canal, evento, fedSvc, authResolver, uow, "example.com", "ed25519:1", priv)
 }
 
@@ -29,7 +49,7 @@ func newTestRoomInteractionService(t *testing.T, canal *roomsvcFakeCanalStorage,
 func TestSendStateEvent_Forbidden(t *testing.T) {
 	roomID, userID := "!room1:example.com", "@alice:example.com"
 
-	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.SendStateEvent(context.Background(), StateParams{
 		RoomID: roomID, UserID: userID, EventType: "m.room.topic", Content: map[string]any{"topic": "hi"},
@@ -45,7 +65,7 @@ func TestSendStateEvent_Success(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomInteractionService(t, canal, evento)
+	svc := newTestRoomInteractionService(t, canal, evento, &MockFederationCacheStorage{})
 
 	eventID, err := svc.SendStateEvent(context.Background(), StateParams{
 		RoomID: roomID, UserID: userID, EventType: "m.room.topic", Content: map[string]any{"topic": "hi"},
@@ -69,7 +89,7 @@ func TestSendStateEvent_Success(t *testing.T) {
 func TestSendEvent_Forbidden(t *testing.T) {
 	roomID, userID := "!room1:example.com", "@alice:example.com"
 
-	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.SendEvent(context.Background(), EventParams{
 		RoomID: roomID, SenderID: userID, EventType: "m.room.message", Content: map[string]any{"body": "oi"},
@@ -85,7 +105,7 @@ func TestSendEvent_Success(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomInteractionService(t, canal, evento)
+	svc := newTestRoomInteractionService(t, canal, evento, &MockFederationCacheStorage{})
 
 	eventID, err := svc.SendEvent(context.Background(), EventParams{
 		RoomID: roomID, SenderID: userID, EventType: "m.room.message", Content: map[string]any{"body": "oi"},
@@ -109,7 +129,7 @@ func TestSendEvent_Success(t *testing.T) {
 func TestSendReceipt_Forbidden(t *testing.T) {
 	roomID, userID := "!room1:example.com", "@alice:example.com"
 
-	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	err := svc.SendReceipt(context.Background(), userID, roomID, "m.read", "$event1")
 	if !errors.Is(err, types.ErrForbidden) {
@@ -122,7 +142,7 @@ func TestSendReceipt_Success(t *testing.T) {
 
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
-	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	if err := svc.SendReceipt(context.Background(), userID, roomID, "m.read", "$event1"); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -134,7 +154,7 @@ func TestSendReceipt_Success(t *testing.T) {
 func TestGetMessages_Forbidden(t *testing.T) {
 	roomID, userID := "!room1:example.com", "@alice:example.com"
 
-	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.GetMessages(context.Background(), roomID, userID, "", "b", 10)
 	if !errors.Is(err, types.ErrForbidden) {
@@ -152,7 +172,7 @@ func TestGetMessages_Success(t *testing.T) {
 		{ID: "$1", Tipo: "m.room.message", StreamOrdering: 10},
 		{ID: "$2", Tipo: "m.room.message", StreamOrdering: 20},
 	}
-	svc := newTestRoomInteractionService(t, canal, evento)
+	svc := newTestRoomInteractionService(t, canal, evento, &MockFederationCacheStorage{})
 
 	resp, err := svc.GetMessages(context.Background(), roomID, userID, "0", "b", 10)
 	if err != nil {
@@ -176,7 +196,7 @@ func TestGetMessages_SetsStartWhenFromMissing(t *testing.T) {
 		{ID: "$3", Tipo: "m.room.message", StreamOrdering: 30},
 		{ID: "$2", Tipo: "m.room.message", StreamOrdering: 20},
 	}
-	svc := newTestRoomInteractionService(t, canal, evento)
+	svc := newTestRoomInteractionService(t, canal, evento, &MockFederationCacheStorage{})
 
 	resp, err := svc.GetMessages(context.Background(), roomID, userID, "", "b", 10)
 	if err != nil {
@@ -195,7 +215,7 @@ func TestGetMessages_InvalidDirection(t *testing.T) {
 
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
-	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.GetMessages(context.Background(), roomID, userID, "", "x", 10)
 	if !errors.Is(err, ErrInvalidPaginationDirection) {
@@ -208,7 +228,7 @@ func TestGetMessages_InvalidDirection(t *testing.T) {
 func TestGetStateEventContent_NeverAMember(t *testing.T) {
 	roomID, userID := "!room1:example.com", "@alice:example.com"
 
-	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, newRoomsvcFakeCanalStorage(), newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.GetStateEventContent(context.Background(), roomID, userID, "m.room.topic", "")
 	if !errors.Is(err, types.ErrForbidden) {
@@ -221,7 +241,7 @@ func TestGetStateEventContent_Banned(t *testing.T) {
 
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "ban"
-	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.GetStateEventContent(context.Background(), roomID, userID, "m.room.topic", "")
 	if !errors.Is(err, types.ErrForbidden) {
@@ -234,7 +254,7 @@ func TestGetStateEventContent_StateNotFound(t *testing.T) {
 
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
-	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage())
+	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage(), &MockFederationCacheStorage{})
 
 	_, err := svc.GetStateEventContent(context.Background(), roomID, userID, "m.room.topic", "")
 	if !errors.Is(err, ErrStateNotFound) {
@@ -250,8 +270,8 @@ func TestGetStateEventContent_Success(t *testing.T) {
 	canal.stateEventIDs[roomsvcStateKey(roomID, "m.room.topic", "")] = "$topic1"
 
 	evento := newRoomsvcFakeEventoStorage()
+	svc := newTestRoomInteractionService(t, canal, evento, &MockFederationCacheStorage{})
 	evento.events["$topic1"] = domain.Evento{ID: "$topic1", Tipo: "m.room.topic", Content: json.RawMessage(`{"topic":"Bem-vindo"}`)}
-	svc := newTestRoomInteractionService(t, canal, evento)
 
 	ev, err := svc.GetStateEventContent(context.Background(), roomID, userID, "m.room.topic", "")
 	if err != nil {
@@ -272,7 +292,7 @@ func TestGetStateEventContent_AllowedAfterLeaving(t *testing.T) {
 
 	evento := newRoomsvcFakeEventoStorage()
 	evento.events["$topic1"] = domain.Evento{ID: "$topic1", Tipo: "m.room.topic", Content: json.RawMessage(`{"topic":"x"}`)}
-	svc := newTestRoomInteractionService(t, canal, evento)
+	svc := newTestRoomInteractionService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if _, err := svc.GetStateEventContent(context.Background(), roomID, userID, "m.room.topic", ""); err != nil {
 		t.Fatalf("expected no error, got %v", err)

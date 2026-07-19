@@ -12,7 +12,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 )
 
-func newTestRoomMembershipService(t *testing.T, canal *roomsvcFakeCanalStorage, evento *roomsvcFakeEventoStorage) *RoomMembershipService {
+func newTestRoomMembershipService(t *testing.T, canal *roomsvcFakeCanalStorage, evento *roomsvcFakeEventoStorage, cacheStore FederationCacheStorage) *RoomMembershipService {
 	t.Helper()
 	uow := &roomsvcFakeWorkUnit{}
 	authResolver := NewAuthRuleResolver(canal)
@@ -20,7 +20,7 @@ func newTestRoomMembershipService(t *testing.T, canal *roomsvcFakeCanalStorage, 
 	if err != nil {
 		t.Fatalf("failed to generate test key: %v", err)
 	}
-	fedSvc := NewFederationService("example.com", "ed25519:1", priv, canal, evento, uow, nil, nil)
+	fedSvc := NewFederationService("example.com", "ed25519:1", priv, canal, evento, uow, nil, nil, cacheStore)
 	return NewRoomMembershipService(uow, canal, evento, authResolver, fedSvc, nil, nil)
 }
 
@@ -32,7 +32,7 @@ func TestInviteUser_Success(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, inviter)] = "join"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "Welcome to the team!", false); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -74,7 +74,7 @@ func TestInviteUser_InviterNotInRoom(t *testing.T) {
 
 	canal := newRoomsvcFakeCanalStorage() // inviter nunca entrou -> "leave" por padrão
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
@@ -92,7 +92,7 @@ func TestInviteUser_InviteeBanned(t *testing.T) {
 	canal.membership[roomsvcMembershipKey(roomID, inviter)] = "join"
 	canal.membership[roomsvcMembershipKey(roomID, invitee)] = "ban"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
@@ -107,7 +107,7 @@ func TestInviteUser_InviteeAlreadyJoined(t *testing.T) {
 	canal.membership[roomsvcMembershipKey(roomID, inviter)] = "join"
 	canal.membership[roomsvcMembershipKey(roomID, invitee)] = "join"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
@@ -128,7 +128,7 @@ func TestInviteUser_InsufficientPowerLevel(t *testing.T) {
 		Content: json.RawMessage(`{"invite":50,"users_default":0,"users":{}}`),
 	}
 
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
@@ -152,7 +152,7 @@ func TestInviteUser_SufficientPowerLevel(t *testing.T) {
 		Content: json.RawMessage(`{"invite":50,"users_default":0,"users":{"` + inviter + `":100}}`),
 	}
 
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -166,7 +166,7 @@ func TestInviteUser_NoPowerLevelsDefined(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, inviter)] = "join"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -181,7 +181,7 @@ func TestJoinLocalRoom_PublicRoom(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.joinRule = "public"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.JoinLocalRoom(context.Background(), userID, roomID); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -197,7 +197,7 @@ func TestJoinLocalRoom_InviteOnlyWithoutInvite(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.joinRule = "invite"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.JoinLocalRoom(context.Background(), userID, roomID); err == nil {
 		t.Fatal("expected error, got nil")
@@ -211,7 +211,7 @@ func TestJoinLocalRoom_InviteOnlyWithInvite(t *testing.T) {
 	canal.joinRule = "invite"
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "invite"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.JoinLocalRoom(context.Background(), userID, roomID); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -229,7 +229,7 @@ func TestLeaveRoom_Success(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.LeaveRoom(context.Background(), userID, roomID); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -244,7 +244,7 @@ func TestLeaveRoom_NotAMember(t *testing.T) {
 
 	canal := newRoomsvcFakeCanalStorage()
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	if err := svc.LeaveRoom(context.Background(), userID, roomID); err == nil {
 		t.Fatal("expected error, got nil")
@@ -256,7 +256,7 @@ func TestLeaveRoom_NotAMember(t *testing.T) {
 func TestGetJoinedRooms_Empty(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	rooms, err := svc.GetJoinedRooms(context.Background(), "@alice:example.com")
 	if err != nil {
@@ -274,7 +274,7 @@ func TestGetJoinedRooms_WithRooms(t *testing.T) {
 	canal := newRoomsvcFakeCanalStorage()
 	canal.joinedRooms = []string{"!room1:example.com", "!room2:example.com"}
 	evento := newRoomsvcFakeEventoStorage()
-	svc := newTestRoomMembershipService(t, canal, evento)
+	svc := newTestRoomMembershipService(t, canal, evento, &MockFederationCacheStorage{})
 
 	rooms, err := svc.GetJoinedRooms(context.Background(), "@alice:example.com")
 	if err != nil {

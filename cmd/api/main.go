@@ -46,6 +46,7 @@ func main() {
 	go notifier.StartBackgroundListener(ctx)
 
 	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
+	federationCache := redis_infra.NewFederationCacheRepo(redisClient)
 
 	// MinIO (object storage para arquivos de mídia)
 	minioStorage, err := minio_infra.NewMinioStorage(
@@ -68,7 +69,7 @@ func main() {
 	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	authRuleResolver := usecase.NewAuthRuleResolver(storage)
 	stateResolver := usecase.NewStateResolverService(authRuleResolver)
-	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage, authRuleResolver, stateResolver)
+	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage, authRuleResolver, stateResolver, federationCache)
 	dirService := usecase.NewDirectoryService(storage, storage, storage, fedService, config.ServerName)
 	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver, fedService, stateResolver, storage)
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage, storage, roomMembershipService)

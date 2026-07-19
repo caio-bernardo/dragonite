@@ -23,6 +23,25 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
+type MockFederationCacheStorage struct {
+}
+
+func (m *MockFederationCacheStorage) SavePendingRetry(ctx context.Context, destServer string, event *domain.Evento, ttl time.Duration) error {
+	return m.SavePendingRetry(ctx, destServer, event, ttl)
+}
+
+func (m *MockFederationCacheStorage) GetAndClearPendingRetries(ctx context.Context, destServer string) ([]domain.Evento, error) {
+	return m.GetAndClearPendingRetries(ctx, destServer)
+}
+
+func (m *MockFederationCacheStorage) PushOutboundQueue(ctx context.Context, event domain.Evento) error {
+	return m.PushOutboundQueue(ctx, event)
+}
+
+func (m *MockFederationCacheStorage) PopOutboundQueue(ctx context.Context, timeout time.Duration) (*domain.Evento, error) {
+	return m.PopOutboundQueue(ctx, timeout)
+}
+
 type fakeSystemStorage struct{}
 
 func (s *fakeSystemStorage) PingDB() map[string]string {
@@ -660,7 +679,7 @@ func newTestHandlerWithFed(t *testing.T, canalStore *fakeFedCanalStore, eventoSt
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{}, nil, nil)
+	fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{}, nil, nil, &MockFederationCacheStorage{})
 	return NewHandler(sys, fedSvc, nil, nil, nil, nil, nil, nil, nil, "example.com")
 }
 

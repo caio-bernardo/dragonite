@@ -51,7 +51,6 @@ type StateResolver interface {
 
 type FederationService struct {
 	// TODO: trocar esse channel por uma fila apropria. Mas por enquanto mantém
-	outboundQueue    chan domain.Evento
 	serverName       string
 	keyID            string
 	privateKey       ed25519.PrivateKey
@@ -60,11 +59,11 @@ type FederationService struct {
 	uow              WorkUnit
 	authRuleResolver *AuthRuleResolver
 	stateResolver    StateResolver
+	cacheStore       FederationCacheStorage
 }
 
-func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKey, canalStore CanalStorage, eventoStore EventoStorage, uow WorkUnit, authRuleResolver *AuthRuleResolver, stateResolver StateResolver) *FederationService {
+func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKey, canalStore CanalStorage, eventoStore EventoStorage, uow WorkUnit, authRuleResolver *AuthRuleResolver, stateResolver StateResolver, cacheStore FederationCacheStorage) *FederationService {
 	fs := &FederationService{
-		outboundQueue:    make(chan domain.Evento, 1000),
 		serverName:       serverName,
 		keyID:            keyID,
 		privateKey:       privateKey,
@@ -73,6 +72,8 @@ func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKe
 		uow:              uow,
 		authRuleResolver: authRuleResolver,
 		stateResolver:    stateResolver,
+
+		cacheStore: cacheStore,
 	}
 
 	// nova thread que vai rodar o worker
@@ -82,25 +83,34 @@ func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKe
 }
 
 func (f *FederationService) QueueOutgoing(ctx context.Context, event domain.Evento) error {
-	select {
-	case f.outboundQueue <- event:
-		return nil
-	default:
-		return types.InternalError(errors.New("Queue is full!"))
+	err := f.cacheStore.PushOutboundQueue(ctx, event)
+	if err != nil {
+		return types.InternalError(fmt.Errorf("Failed to push to outbound queue: %w", err))
 	}
+	return nil
 }
 
 func (f *FederationService) startWorker() {
 	log.Println("[Federation] Background Worker just started")
 
-	for event := range f.outboundQueue {
-		destinations := f.extractDestionations(event)
+	for {
+		event, err := f.cacheStore.PopOutboundQueue(context.Background(), 10*time.Second)
+		if err != nil {
+			log.Printf("[Federation] PopOutboundQueue error: %v", err)
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		if event == nil {
+			continue
+		}
+
+		destinations := f.extractDestionations(*event)
 
 		for _, dest := range destinations {
 			if dest == f.serverName {
 				continue
 			}
-			go f.sendWithRetry(dest, event)
+			go f.sendWithRetry(dest, *event)
 		}
 	}
 }
@@ -123,6 +133,9 @@ func (f *FederationService) sendWithRetry(dest string, event domain.Evento) {
 		// fazemos a requisição de novo em 2^i segundos
 		time.Sleep(time.Duration(2<<i) * time.Second)
 	}
+
+	log.Printf("[Federation] Max reties exausted for %s. Moving to %s pending queue", dest, event.ID)
+	f.storePendingRetry(dest, event)
 }
 
 func (f *FederationService) sendTransaction(targetHost, dest string, event domain.Evento) error {
@@ -215,6 +228,8 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 	if err != nil || pdu.ID != expectedID {
 		return fmt.Errorf("evento com ID incorreto: esperado %s, encontrado %s", expectedID, pdu.ID)
 	}
+	// Tenta dar flush nas que podem estar acumuladas para aquela origem de modo assíncrono.
+	go f.FlushPendingRetries(origin)
 
 	// TODO: verificar a assinatura do evento, remover signatures e verificar a chave pública do servidor
 
@@ -1243,6 +1258,7 @@ func (f *FederationService) updateRoomStateAndMembership(ctx context.Context, pd
 
 	return nil
 }
+
 // DirectToDeviceEduContent é o conteúdo da EDU m.direct_to_device (S2S)
 type DirectToDeviceEduContent struct {
 	MessageID string                                `json:"message_id"`
@@ -1316,5 +1332,30 @@ func (f *FederationService) SendToDeviceCall(ctx context.Context, remoteServer, 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		log.Printf("[Federation] SendToDeviceCall: remote server rejected transaction: %d - %s", resp.StatusCode, string(body))
+	}
+}
+
+// Store pending events that we could not send
+func (f *FederationService) storePendingRetry(dest string, event domain.Evento) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Keep pending retries for 7 days before auto-dropping them
+	_ = f.cacheStore.SavePendingRetry(ctx, dest, &event, 7*24*time.Hour)
+}
+
+// Flush events to retry sending.
+func (f *FederationService) FlushPendingRetries(dest string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	events, err := f.cacheStore.GetAndClearPendingRetries(ctx, dest)
+	if err != nil || len(events) == 0 {
+		return
+	}
+
+	log.Printf("[Federation] Origin %s is back online! Flushing %d events from Redis.", dest, len(events))
+	for _, event := range events {
+		go f.sendWithRetry(dest, event)
 	}
 }

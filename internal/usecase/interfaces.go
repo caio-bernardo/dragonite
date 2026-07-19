@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 )
@@ -13,6 +14,21 @@ type SearchFilter struct {
 	Term      string   //termo de pesquisa
 	Limit     int      // limite de resultados
 	NextToken string   // paginação
+}
+
+// para a federação, seguindo a Clean Architecture.
+type FederationCacheStorage interface {
+	// SavePendingRetry armazena duravelmente um evento que falhou após o backoff máximo.
+	SavePendingRetry(ctx context.Context, destServer string, event *domain.Evento, ttl time.Duration) error
+
+	// GetAndClearPendingRetries busca e remove atomicamente todos os eventos pendentes para um servidor.
+	GetAndClearPendingRetries(ctx context.Context, destServer string) ([]domain.Evento, error)
+
+	// PushOutboundQueue (Bônus) Substitui o canal em memória por uma fila Redis persistente.
+	PushOutboundQueue(ctx context.Context, event domain.Evento) error
+
+	// PopOutboundQueue remove e retorna o próximo evento a ser federado (bloqueante ou polling).
+	PopOutboundQueue(ctx context.Context, timeout time.Duration) (*domain.Evento, error)
 }
 
 type UsuarioStorage interface {
