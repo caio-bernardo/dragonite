@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -52,13 +53,7 @@ func (s *DirectoryService) resolveLocal(ctx context.Context, alias string) (stri
 		servers = nil
 	}
 	// garante que o próprio servidor apareça na lista
-	found := false
-	for _, srv := range servers {
-		if srv == s.serverName {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(servers, s.serverName)
 	if !found {
 		servers = append([]string{s.serverName}, servers...)
 	}
@@ -152,10 +147,7 @@ func (s *DirectoryService) ListPublic(ctx context.Context, term string, limit in
 	}
 	// PrevBatch só aparece se não estivermos na primeira página
 	if offset > 0 {
-		prev := offset - limit
-		if prev < 0 {
-			prev = 0
-		}
+		prev := max(offset-limit, 0)
 		response.PrevBatch = fmt.Sprintf("%d", prev)
 	}
 
