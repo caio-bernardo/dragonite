@@ -130,7 +130,7 @@ func (c *clientCanalStore) GetUserLeftRooms(ctx context.Context, userID string) 
 }
 
 func TestGetVersions(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/versions", nil)
@@ -158,7 +158,7 @@ func TestGetVersions(t *testing.T) {
 }
 
 func TestGetPushRules(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/pushrules/", nil)
@@ -180,7 +180,7 @@ func TestGetPushRules(t *testing.T) {
 }
 
 func TestUploadFilterOK(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{"room":{"timeline":{"limit":10}}}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user/@alice:example.com/filter", body)
@@ -203,7 +203,7 @@ func TestUploadFilterOK(t *testing.T) {
 }
 
 func TestUploadFilterInvalidJSON(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{invalid`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user/@alice:example.com/filter", body)
@@ -228,7 +228,7 @@ func TestUploadFilterInvalidJSON(t *testing.T) {
 }
 
 func TestGetCapabilities(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/capabilities", nil)
@@ -262,7 +262,7 @@ func TestSearchUsersOK(t *testing.T) {
 	canalStore := &clientCanalStore{joinedRooms: []string{"!room1:example.com"}}
 	dirService := usecase.NewDirectoryService(nil, userStore, canalStore, nil, "example.com")
 
-	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{"search_term":"al","limit":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user_directory/search", body)
@@ -292,7 +292,7 @@ func TestSearchUsersOK(t *testing.T) {
 
 func TestSearchUsersMissingSearchTerm(t *testing.T) {
 	dirService := usecase.NewDirectoryService(nil, &clientUserStore{}, &clientCanalStore{}, nil, "example.com")
-	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, dirService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user_directory/search", body)

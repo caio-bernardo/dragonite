@@ -63,7 +63,7 @@ func TestGetLatestVersionOK(t *testing.T) {
 	}
 	store := &fakeBackupStorage{getResult: existing}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/room_keys/version", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
@@ -93,7 +93,7 @@ func TestGetLatestVersionOK(t *testing.T) {
 func TestGetLatestVersionNotFound(t *testing.T) {
 	store := &fakeBackupStorage{getResult: nil}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/room_keys/version", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
@@ -119,7 +119,7 @@ func TestGetLatestVersionNotFound(t *testing.T) {
 func TestGetLatestVersionMissingAuth(t *testing.T) {
 	store := &fakeBackupStorage{}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/room_keys/version", nil)
 	rec := httptest.NewRecorder()
@@ -134,7 +134,7 @@ func TestGetLatestVersionMissingAuth(t *testing.T) {
 func TestCreateVersionOK(t *testing.T) {
 	store := &fakeBackupStorage{nextID: 7}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	body := bytes.NewBufferString(`{"algorithm":"m.megolm_backup.v1.curve25519-aes-sha2","auth_data":{"public_key":"abcdefg"}}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/room_keys/version", body)
@@ -165,7 +165,7 @@ func TestCreateVersionOK(t *testing.T) {
 func TestCreateVersionMissingParams(t *testing.T) {
 	store := &fakeBackupStorage{}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	body := bytes.NewBufferString(`{"algorithm":""}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/room_keys/version", body)
@@ -192,7 +192,7 @@ func TestCreateVersionMissingParams(t *testing.T) {
 func TestCreateVersionInvalidJSON(t *testing.T) {
 	store := &fakeBackupStorage{}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	body := bytes.NewBufferString(`{invalid`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/room_keys/version", body)
@@ -209,7 +209,7 @@ func TestCreateVersionInvalidJSON(t *testing.T) {
 func TestCreateVersionStorageError(t *testing.T) {
 	store := &fakeBackupStorage{createErr: errors.New("db connection lost")}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	body := bytes.NewBufferString(`{"algorithm":"m.megolm_backup.v1.curve25519-aes-sha2","auth_data":{"public_key":"abcdefg"}}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/room_keys/version", body)
@@ -269,7 +269,7 @@ func TestGetRoomKeysOK(t *testing.T) {
 		},
 	}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/room_keys/keys?version=3", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
@@ -297,7 +297,7 @@ func TestGetRoomKeysOK(t *testing.T) {
 func TestGetRoomKeysNotFound(t *testing.T) {
 	store := &fakeBackupStorage{}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/room_keys/keys?version=99", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
@@ -313,7 +313,7 @@ func TestGetRoomKeysNotFound(t *testing.T) {
 func TestGetRoomKeysMissingVersion(t *testing.T) {
 	store := &fakeBackupStorage{}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/room_keys/keys", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
@@ -331,7 +331,7 @@ func TestPutRoomKeysOK(t *testing.T) {
 		getResult: &domain.VersaoBackup{IDVersao: 3, IDUsuario: "@alice:example.com"},
 	}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	body := bytes.NewBufferString(`{
 		"rooms": {
@@ -374,7 +374,7 @@ func TestPutRoomKeysWrongVersion(t *testing.T) {
 		},
 	}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	body := bytes.NewBufferString(`{"rooms":{}}`)
 	req := httptest.NewRequest(http.MethodPut, "/_matrix/client/v3/room_keys/keys?version=3", body)
@@ -403,7 +403,7 @@ func TestDeleteRoomKeysOK(t *testing.T) {
 		},
 	}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodDelete, "/_matrix/client/v3/room_keys/keys?version=3", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
@@ -419,7 +419,7 @@ func TestDeleteRoomKeysOK(t *testing.T) {
 func TestDeleteRoomKeysNotFound(t *testing.T) {
 	store := &fakeBackupStorage{}
 	svc := usecase.NewBackupService(&roomkeysFakeWorkUnit{}, store)
-	h := NewHandler(svc)
+	h := NewHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodDelete, "/_matrix/client/v3/room_keys/keys?version=99", nil)
 	req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))

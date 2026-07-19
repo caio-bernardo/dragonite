@@ -32,7 +32,7 @@ func (s *fakeSystemStorage) PingDB() map[string]string {
 func TestFederationGetVersion(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil, nil, nil, nil, nil, nil, "example.com")
+	h := NewHandler(sys, nil, nil, nil, nil, nil, nil, nil, nil, "example.com")
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/federation/v1/version", nil)
@@ -55,7 +55,7 @@ func TestFederationGetVersion(t *testing.T) {
 func TestFederationGetServerKeySignature(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil, nil, nil, nil, nil, nil, "example.com")
+	h := NewHandler(sys, nil, nil, nil, nil, nil, nil, nil, nil, "example.com")
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/key/v2/server", nil)
@@ -161,7 +161,7 @@ func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handl
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
 	profileSvc := usecase.NewProfileService(storage, nil, nil, nil)
-	return NewHandler(sys, nil, nil, profileSvc, nil, nil, nil, "example.com")
+	return NewHandler(sys, nil, nil, profileSvc, nil, nil, nil, nil, nil, "example.com")
 }
 
 func TestGetProfile_MissingUserID(t *testing.T) {
@@ -338,7 +338,7 @@ func newTestHandlerWithDir(t *testing.T, storage *fakeDirectoryStorage) *Handler
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
 	dirSvc := usecase.NewDirectoryService(storage, nil, nil, nil, "example.com")
-	return NewHandler(sys, nil, nil, nil, dirSvc, nil, nil, "example.com")
+	return NewHandler(sys, nil, nil, nil, dirSvc, nil, nil, nil, nil, "example.com")
 }
 
 func TestGetPublicRooms_Empty(t *testing.T) {
@@ -661,7 +661,7 @@ func newTestHandlerWithFed(t *testing.T, canalStore *fakeFedCanalStore, eventoSt
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
 	fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{}, nil, nil)
-	return NewHandler(sys, fedSvc, nil, nil, nil, nil, nil, "example.com")
+	return NewHandler(sys, fedSvc, nil, nil, nil, nil, nil, nil, nil, "example.com")
 }
 
 // Testes makeJoin
@@ -1511,7 +1511,7 @@ func newTestHandlerWithMedia(t *testing.T, mediaSvc *usecase.MediaService) *Hand
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	return NewHandler(sys, nil, nil, nil, nil, mediaSvc, nil, "example.com")
+	return NewHandler(sys, nil, nil, nil, nil, mediaSvc, nil, nil, nil, "example.com")
 }
 
 // Testes getMediaDownload
