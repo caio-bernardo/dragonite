@@ -36,15 +36,15 @@ const (
 	M_EXCLUSIVE                       MatrixErrorCode = "M_EXCLUSIVE"                       // The resource being requested is reserved by an application service, or the application service making the request has not created the resource.
 	M_RESOURCE_LIMIT_EXCEEDED         MatrixErrorCode = "M_RESOURCE_LIMIT_EXCEEDED"         // The request cannot be completed because the homeserver has reached a resource limit imposed on it. For example, a homeserver held in a shared hosting environment may reach a resource limit if it starts using too much memory or disk space. The error MUST have an admin_contact field to provide the user receiving the error a place to reach out to. Typically, this error will appear on routes which attempt to modify state (eg: sending messages, account data, etc) and not routes which only read state (eg: /sync, get account data, etc).
 	M_CANNOT_LEAVE_SERVER_NOTICE_ROOM MatrixErrorCode = "M_CANNOT_LEAVE_SERVER_NOTICE_ROOM" // The user is unable to reject an invite to join the server notices room. See the Server Notices module for MatrixErrorCode more MatrixErrorCode MatrixErrorCode MatrixErrorCode MatrixErrorCode MatrixErrorCode MatrixErrorCode MatrixErrorCode MatrixErrorCode information.
-	M_NOT_YET_UPLOADED 				  MatrixErrorCode = "M_NOT_YET_UPLOADED" 				// It is used by download/thumbnail when an mxc:// has been announced but the corresponding upload is still in progress. NOTE: not actively used in this project, our upload flow is always synchronous, so the mxc:// is only returned to the client after the file is guaranteed to be available. Kept here for spec completeness, for future use should an asynchronous upload flow be implemented.
-	M_WRONG_ROOM_KEYS_VERSION 		  MatrixErrorCode = "M_WRONG_ROOM_KEYS_VERSION"         // The version specified does not match the current backup version.
+	M_NOT_YET_UPLOADED                MatrixErrorCode = "M_NOT_YET_UPLOADED"                // It is used by download/thumbnail when an mxc:// has been announced but the corresponding upload is still in progress. NOTE: not actively used in this project, our upload flow is always synchronous, so the mxc:// is only returned to the client after the file is guaranteed to be available. Kept here for spec completeness, for future use should an asynchronous upload flow be implemented.
+	M_WRONG_ROOM_KEYS_VERSION         MatrixErrorCode = "M_WRONG_ROOM_KEYS_VERSION"         // The version specified does not match the current backup version.
 )
 
 // ErrorReponse uma estrutura com o formato de erros padrão do Matrix
 type MatrixErrorResponse struct {
-	ErrCode MatrixErrorCode `json:"errcode"`
-	Message string          `json:"error"`
-	SoftLogout bool 		`json:"soft_logout,omitempty"`
+	ErrCode    MatrixErrorCode `json:"errcode"`
+	Message    string          `json:"error"`
+	SoftLogout bool            `json:"soft_logout,omitempty"`
 }
 
 // NewErrorResponse creates error reponses in the matrix error format

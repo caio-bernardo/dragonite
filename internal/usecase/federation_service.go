@@ -113,14 +113,14 @@ func (f *FederationService) sendWithRetry(dest string, event domain.Evento) {
 	}
 
 	// Backoff exponencial
-	maxRetries := 5
+	maxRetries := 5 // Num servidor de verdade deveria ser 16 ou 17 retries
 	for i := range maxRetries {
 		err := f.sendTransaction(targetHost, dest, event)
 		if err == nil {
 			return
 		}
 		log.Printf("[Federation] Retry %d/%d failed: %v", i+1, maxRetries, err)
-		// famos a requisição de novo em 2^i segundos
+		// fazemos a requisição de novo em 2^i segundos
 		time.Sleep(time.Duration(2<<i) * time.Second)
 	}
 }
@@ -234,6 +234,12 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 		for _, histPDU := range historicalEvents {
 
 			histID, _ := util.HashMatrixEvent(&histPDU)
+
+			// Compatibilidade com o matrix v3
+			if histPDU.ID == "" {
+				histPDU.ID = histID
+			}
+
 			if histID == histPDU.ID {
 				_ = f.uow.Execute(ctx, func(txCtx context.Context) error {
 					err = f.eventoStore.SaveEvento(txCtx, &histPDU)
@@ -321,8 +327,12 @@ func (f *FederationService) fetchMissingEvents(ctx context.Context, originServer
 
 	uri := fmt.Sprintf("/_matrix/federation/v1/get_missing_events/%s", roomID)
 
+	knownExtremities, _ := f.canalStore.GetForwardExtremities(ctx, roomID)
+	if knownExtremities == nil {
+		knownExtremities = []string{}
+	}
 	payload := GetMissingEventsRequest{
-		EarliestEvents: []string{},
+		EarliestEvents: knownExtremities,
 		LatestEvents:   missingPrev,
 		Limit:          10, // busca até 10 eventos no passado
 		MinDepth:       0,
@@ -1002,6 +1012,124 @@ func (f *FederationService) QueryDirectory(ctx context.Context, remoteServer, ro
 	return result.RoomID, result.Servers, nil
 }
 
+// OutboundKeysQueryRequest é o payload de POST /_matrix/federation/v1/user/keys/query
+type OutboundKeysQueryRequest struct {
+	DeviceKeys map[string][]string `json:"device_keys"`
+}
+
+// OutboundKeysQueryResponse é a resposta de POST /_matrix/federation/v1/user/keys/query
+type OutboundKeysQueryResponse struct {
+	DeviceKeys      map[string]map[string]json.RawMessage `json:"device_keys"`
+	MasterKeys      map[string]json.RawMessage            `json:"master_keys,omitempty"`
+	SelfSigningKeys map[string]json.RawMessage            `json:"self_signing_keys,omitempty"`
+}
+
+// QueryKeysCall consulta as chaves de identidade de dispositivos de usuários hospedados em remoteServer
+func (f *FederationService) QueryKeysCall(ctx context.Context, remoteServer string, deviceKeys map[string][]string) (*OutboundKeysQueryResponse, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := "/_matrix/federation/v1/user/keys/query"
+	payload := OutboundKeysQueryRequest{DeviceKeys: deviceKeys}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize keys/query payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "POST", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign keys/query request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected keys/query: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result OutboundKeysQueryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode keys/query response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// OutboundKeysClaimRequest é o payload de POST /_matrix/federation/v1/user/keys/claim
+type OutboundKeysClaimRequest struct {
+	OneTimeKeys map[string]map[string]string `json:"one_time_keys"`
+}
+
+// OutboundKeysClaimResponse é a resposta de POST /_matrix/federation/v1/user/keys/claim
+type OutboundKeysClaimResponse struct {
+	OneTimeKeys map[string]map[string]map[string]json.RawMessage `json:"one_time_keys"`
+}
+
+// ClaimKeysCall reivindica one-time keys de dispositivos hospedados em remoteServer
+func (f *FederationService) ClaimKeysCall(ctx context.Context, remoteServer string, oneTimeKeys map[string]map[string]string) (map[string]map[string]map[string]json.RawMessage, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := "/_matrix/federation/v1/user/keys/claim"
+	payload := OutboundKeysClaimRequest{OneTimeKeys: oneTimeKeys}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize keys/claim payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "POST", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign keys/claim request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected keys/claim: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result OutboundKeysClaimResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode keys/claim response: %w", err)
+	}
+
+	return result.OneTimeKeys, nil
+}
+
 // resolveStateAtIngestion calculates the consensus state map across all prev_events of an incoming PDU.
 func (f *FederationService) resolveStateAtIngestion(ctx context.Context, roomID string, prevEvents []string) (domain.StateMap, error) {
 	if len(prevEvents) == 0 {
@@ -1114,4 +1242,79 @@ func (f *FederationService) updateRoomStateAndMembership(ctx context.Context, pd
 	}
 
 	return nil
+}
+// DirectToDeviceEduContent é o conteúdo da EDU m.direct_to_device (S2S)
+type DirectToDeviceEduContent struct {
+	MessageID string                                `json:"message_id"`
+	Messages  map[string]map[string]json.RawMessage `json:"messages"`
+	Sender    string                                `json:"sender"`
+	Type      string                                `json:"type"`
+}
+
+// SendToDeviceCall envia mensagens send-to-device pra usuários hospedados em remoteServer via
+// uma EDU m.direct_to_device dentro de uma transação de federação. Best-effort: erros só são logados
+// (diferente do pipeline de PDUs, não há fila de retry aqui ainda).
+func (f *FederationService) SendToDeviceCall(ctx context.Context, remoteServer, sender, eventType string, messages map[string]map[string]json.RawMessage) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to resolve %s: %v", remoteServer, err)
+		return
+	}
+
+	txnID := fmt.Sprintf("%d", time.Now().UnixMilli())
+	uri := fmt.Sprintf("/_matrix/federation/v1/send/%s", txnID)
+
+	eduContentBytes, err := json.Marshal(DirectToDeviceEduContent{
+		MessageID: txnID,
+		Messages:  messages,
+		Sender:    sender,
+		Type:      eventType,
+	})
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to marshal EDU content: %v", err)
+		return
+	}
+
+	txnPayload := map[string]any{
+		"origin":           f.serverName,
+		"origin_server_ts": time.Now().UnixMilli(),
+		"pdus":             []domain.Evento{},
+		"edus": []map[string]any{
+			{"edu_type": "m.direct_to_device", "content": json.RawMessage(eduContentBytes)},
+		},
+	}
+
+	txnBytes, err := util.CanonicalJSON(txnPayload)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to canonicalize payload: %v", err)
+		return
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "PUT", uri, remoteServer, txnPayload)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to sign request: %v", err)
+		return
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, bytes.NewBuffer(txnBytes))
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to build request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to contact %s: %v", remoteServer, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[Federation] SendToDeviceCall: remote server rejected transaction: %d - %s", resp.StatusCode, string(body))
+	}
 }

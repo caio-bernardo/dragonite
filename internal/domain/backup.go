@@ -6,17 +6,17 @@ import (
 	"time"
 )
 
-// VersaoBackup representa uma versão do backup de chaves de sessão (Server-side Key Backup) 
+// VersaoBackup representa uma versão do backup de chaves de sessão (Server-side Key Backup)
 // de um usuário, usado no fluxo de E2EE (megolm backup)
 // Uma nova versão nunca sobrescreve uma anterior: cada POST cria uma linha nova,
 // e a "latest" é sempre a de maior IDVersao para aquele usuário
 type VersaoBackup struct {
-	IDVersao  int64 // PK interna, autoincrementável 
+	IDVersao  int64 // PK interna, autoincrementável
 	IDUsuario string
 	Algorithm string
-	AuthData  json.RawMessage 
-	Count     int64           // número de chaves armazenadas nesta versão do backup
-	ETag      string          // string opaca que muda a cada alteração no conteúdo do backup
+	AuthData  json.RawMessage
+	Count     int64  // número de chaves armazenadas nesta versão do backup
+	ETag      string // string opaca que muda a cada alteração no conteúdo do backup
 	CreatedAt time.Time
 }
 

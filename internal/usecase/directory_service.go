@@ -11,18 +11,18 @@ import (
 )
 
 type DirectoryService struct {
-	dirStore   DirectoryStorage
-	userStore  UsuarioStorage
-	canalStore CanalStorage
+	dirStore    DirectoryStorage
+	userStore   UsuarioStorage
+	canalStore  CanalStorage
 	remoteQuery RemoteDirectoryResolver
 	serverName  string
 }
 
 func NewDirectoryService(dirStore DirectoryStorage, userStore UsuarioStorage, canalStore CanalStorage, remoteQuery RemoteDirectoryResolver, serverName string) *DirectoryService {
 	return &DirectoryService{
-		dirStore:   dirStore,
-		userStore:  userStore,
-		canalStore: canalStore,
+		dirStore:    dirStore,
+		userStore:   userStore,
+		canalStore:  canalStore,
 		remoteQuery: remoteQuery,
 		serverName:  serverName,
 	}

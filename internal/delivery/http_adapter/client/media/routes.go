@@ -93,17 +93,17 @@ func (h *Handler) downloadMedia(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing serverName or mediaId in path")
 		return
 	}
- 
+
 	result, err := h.mediaService.Download(r.Context(), serverName, mediaID)
 	if err != nil {
 		h.writeDownloadError(w, "download", serverName, mediaID, err)
 		return
 	}
 	defer result.Content.Close()
- 
+
 	writeMediaResponse(w, result)
 }
- 
+
 // thumbnailMedia devolve uma miniatura de um arquivo de mídia
 // GET /_matrix/client/v1/media/thumbnail/{serverName}/{mediaId}
 // Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv1mediathumbnailservernamemediaid
@@ -114,17 +114,17 @@ func (h *Handler) thumbnailMedia(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing serverName or mediaId in path")
 		return
 	}
- 
+
 	result, err := h.mediaService.Thumbnail(r.Context(), serverName, mediaID)
 	if err != nil {
 		h.writeDownloadError(w, "thumbnail", serverName, mediaID, err)
 		return
 	}
 	defer result.Content.Close()
- 
+
 	writeMediaResponse(w, result)
 }
- 
+
 // writeDownloadError centraliza o mapeamento de erros do MediaService para respostas Matrix,
 // evitando duplicar a lógica entre downloadMedia e thumbnailMedia.
 func (h *Handler) writeDownloadError(w http.ResponseWriter, op, serverName, mediaID string, err error) {
@@ -132,11 +132,11 @@ func (h *Handler) writeDownloadError(w http.ResponseWriter, op, serverName, medi
 		httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Media not found")
 		return
 	}
- 
+
 	log.Printf("[ERROR] GET /_matrix/client/v1/media/%s/%s/%s: %v", op, serverName, mediaID, err)
 	httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to retrieve media")
 }
- 
+
 // writeMediaResponse escreve os bytes crus do arquivo com os headers exigidos pela spec Matrix
 // (Content-Type e Content-Disposition), fazendo streaming direto para o cliente sem carregar tudo em memória.
 func writeMediaResponse(w http.ResponseWriter, result *usecase.DownloadResult) {
@@ -147,16 +147,16 @@ func writeMediaResponse(w http.ResponseWriter, result *usecase.DownloadResult) {
 	if result.Filename != "" {
 		disposition = fmt.Sprintf(`%s; filename="%s"`, disposition, result.Filename)
 	}
- 
+
 	w.Header().Set("Content-Type", result.ContentType)
 	w.Header().Set("Content-Disposition", disposition)
 	w.WriteHeader(http.StatusOK)
- 
+
 	if _, err := io.Copy(w, result.Content); err != nil {
 		log.Printf("[ERROR] failed to stream media response: %v", err)
 	}
 }
- 
+
 // isInlineSafe retorna true para tipos de conteúdo seguros para exibição inline no navegador
 func isInlineSafe(contentType string) bool {
 	for _, prefix := range []string{"image/", "audio/", "video/", "text/"} {

@@ -11,25 +11,39 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
-// Handler agrupa as rotas de backup de chaves E2EE (room_keys) do cliente Matrix
+// Handler agrupa as rotas de E2EE do cliente Matrix: backup de chaves (room_keys) e
+// gerenciamento de chaves de dispositivo (keys)
 type Handler struct {
 	backupService *usecase.BackupService
+	keysService   *usecase.KeysService
 }
 
 // NewHandler cria um Handler de room_keys com o serviço injetado
-func NewHandler(backupService *usecase.BackupService) *Handler {
-	return &Handler{backupService: backupService}
+func NewHandler(backupService *usecase.BackupService, keysService *usecase.KeysService) *Handler {
+	return &Handler{backupService: backupService, keysService: keysService}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
 	// TODO: adicionar rate limiting por userID antes do authMiddleware quando
 	// a infraestrutura de rate limiting for implementada no projeto.
+
+	// backup de chaves (server-side key backup)
 	mux.Handle("GET /_matrix/client/v3/room_keys/version", authMiddleware(http.HandlerFunc(h.getLatestVersion)))
 	mux.Handle("POST /_matrix/client/v3/room_keys/version", authMiddleware(http.HandlerFunc(h.createVersion)))
 	mux.Handle("GET /_matrix/client/v3/room_keys/keys", authMiddleware(http.HandlerFunc(h.getRoomKeys)))
 	mux.Handle("GET /_matrix/client/v3/room_keys/keys/{roomID}", authMiddleware(http.HandlerFunc(h.getRoomKeys)))
 	mux.Handle("PUT /_matrix/client/v3/room_keys/keys", authMiddleware(http.HandlerFunc(h.putRoomKeys)))
 	mux.Handle("DELETE /_matrix/client/v3/room_keys/keys", authMiddleware(http.HandlerFunc(h.deleteRoomKeys)))
+
+	// chaves de dispositivo (device keys, one-time keys, fallback keys)
+	mux.Handle("POST /_matrix/client/v3/keys/upload", authMiddleware(http.HandlerFunc(h.uploadKeys)))
+	mux.Handle("POST /_matrix/client/v3/keys/query", authMiddleware(http.HandlerFunc(h.queryKeys)))
+	mux.Handle("POST /_matrix/client/v3/keys/claim", authMiddleware(http.HandlerFunc(h.claimKeys)))
+	mux.Handle("GET /_matrix/client/v3/keys/changes", authMiddleware(http.HandlerFunc(h.getKeyChanges)))
+
+	// cross-signing
+	mux.Handle("POST /_matrix/client/v3/keys/device_signing/upload", authMiddleware(http.HandlerFunc(h.uploadCrossSigningKeys)))
+	mux.Handle("POST /_matrix/client/v3/keys/signatures/upload", authMiddleware(http.HandlerFunc(h.uploadSignatures)))
 }
 
 // getLatestVersion retorna informações sobre a versão mais recente do backup de chaves

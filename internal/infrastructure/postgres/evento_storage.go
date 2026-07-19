@@ -537,12 +537,12 @@ func (s *PostgresStorage) GetMissingEvents(ctx context.Context, roomID string, e
 				-- Condições de paragem exigidas pelo protocolo Matrix:
 				NOT (e.id_evento = ANY($3)) -- Pára se encontrar um earliest_event
 				AND e.depth >= $4           -- Pára se for mais profundo do que min_depth
-				AND mt.distance <= $5       -- Limite de segurança da recursão = limit param
+				AND mt.distance < $5       -- Limite de segurança da recursão = limit param
 		)
 		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key, prev_eventos, auth_eventos, depth, hashes, signatures, unsigned
 		FROM missing_tree
 		-- A especificação determina que a resposta NÃO pode conter os latest_events nem os earliest_events
-		WHERE NOT (id_evento = ANY($2)) AND NOT (id_evento = ANY($3))
+		WHERE NOT (id_evento = ANY($3))
 		-- A resposta deve vir ordenada por profundidade topológica (do mais antigo para o mais recente)
 		ORDER BY depth ASC
 		LIMIT $5;

@@ -50,7 +50,7 @@ type routeRemoteFetcher struct {
 	filename    string
 	err         error
 }
- 
+
 func (f *routeRemoteFetcher) FetchRemoteMedia(_ context.Context, _, _ string) (io.ReadCloser, string, string, error) {
 	if f.err != nil {
 		return nil, "", "", f.err
@@ -178,14 +178,13 @@ func assertErrCode(t *testing.T, rec *httptest.ResponseRecorder, expected string
 	}
 }
 
-
 func newDownloadRequest(path, serverName, mediaID string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	req.SetPathValue("serverName", serverName)
 	req.SetPathValue("mediaId", mediaID)
 	return req.WithContext(ctxWithUser("@alice:example.com"))
 }
- 
+
 // Testes de downloadMedia
 
 func TestDownloadMediaLocalSuccess(t *testing.T) {
@@ -197,11 +196,11 @@ func TestDownloadMediaLocalSuccess(t *testing.T) {
 	}}
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
 	h := NewHandler(svc)
- 
+
 	req := newDownloadRequest("/_matrix/client/v1/media/download/example.com/abc123", "example.com", "abc123")
 	rec := httptest.NewRecorder()
 	h.downloadMedia(rec, req)
- 
+
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
 	}
@@ -216,38 +215,38 @@ func TestDownloadMediaLocalSuccess(t *testing.T) {
 		t.Fatalf("expected filename in disposition, got %s", disposition)
 	}
 }
- 
+
 func TestDownloadMediaNotFound(t *testing.T) {
 	midiaStore := &routeMidiaStore{getResult: nil}
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
 	h := NewHandler(svc)
- 
+
 	req := newDownloadRequest("/_matrix/client/v1/media/download/example.com/nao-existe", "example.com", "nao-existe")
 	rec := httptest.NewRecorder()
 	h.downloadMedia(rec, req)
- 
+
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 	assertErrCode(t, rec, "M_NOT_FOUND")
 }
- 
+
 func TestDownloadMediaMissingPathParams(t *testing.T) {
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, nil)
 	h := NewHandler(svc)
- 
+
 	// serverName e mediaId não foram setados via SetPathValue
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v1/media/download//", nil)
 	req = req.WithContext(ctxWithUser("@alice:example.com"))
 	rec := httptest.NewRecorder()
 	h.downloadMedia(rec, req)
- 
+
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 	assertErrCode(t, rec, "M_BAD_JSON")
 }
- 
+
 func TestDownloadMediaRemoteProxiesViaFederation(t *testing.T) {
 	fetcher := &routeRemoteFetcher{
 		content:     "bytes remotos",
@@ -256,11 +255,11 @@ func TestDownloadMediaRemoteProxiesViaFederation(t *testing.T) {
 	}
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, fetcher)
 	h := NewHandler(svc)
- 
+
 	req := newDownloadRequest("/_matrix/client/v1/media/download/outroservidor.com/xyz789", "outroservidor.com", "xyz789")
 	rec := httptest.NewRecorder()
 	h.downloadMedia(rec, req)
- 
+
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
 	}
@@ -273,24 +272,24 @@ func TestDownloadMediaRemoteProxiesViaFederation(t *testing.T) {
 		t.Fatalf("expected proxied body, got %s", rec.Body.String())
 	}
 }
- 
+
 func TestDownloadMediaRemoteWithoutFederationIsNotFound(t *testing.T) {
 	// Sem RemoteMediaFetcher configurado, pedir mídia de outro servidor deve dar 404, não 500
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, nil)
 	h := NewHandler(svc)
- 
+
 	req := newDownloadRequest("/_matrix/client/v1/media/download/outroservidor.com/xyz789", "outroservidor.com", "xyz789")
 	rec := httptest.NewRecorder()
 	h.downloadMedia(rec, req)
- 
+
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 	assertErrCode(t, rec, "M_NOT_FOUND")
 }
- 
-// Testes de thumbnailMedia 
- 
+
+// Testes de thumbnailMedia
+
 func TestThumbnailMediaReturnsOriginalFile(t *testing.T) {
 	// confirma a simplificação: thumbnail devolve o arquivo original, sem redimensionar
 	midiaStore := &routeMidiaStore{getResult: &domain.Midia{
@@ -301,11 +300,11 @@ func TestThumbnailMediaReturnsOriginalFile(t *testing.T) {
 	}}
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
 	h := NewHandler(svc)
- 
+
 	req := newDownloadRequest("/_matrix/client/v1/media/thumbnail/example.com/abc123", "example.com", "abc123")
 	rec := httptest.NewRecorder()
 	h.thumbnailMedia(rec, req)
- 
+
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
 	}
@@ -313,16 +312,16 @@ func TestThumbnailMediaReturnsOriginalFile(t *testing.T) {
 		t.Fatalf("expected Content-Type image/jpeg (original), got %s", ct)
 	}
 }
- 
+
 func TestThumbnailMediaNotFound(t *testing.T) {
 	midiaStore := &routeMidiaStore{getResult: nil}
 	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
 	h := NewHandler(svc)
- 
+
 	req := newDownloadRequest("/_matrix/client/v1/media/thumbnail/example.com/nao-existe", "example.com", "nao-existe")
 	rec := httptest.NewRecorder()
 	h.thumbnailMedia(rec, req)
- 
+
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
@@ -373,4 +372,3 @@ func TestMediaConfigUsesDefaultWhenUnconfigured(t *testing.T) {
 		t.Fatalf("expected default max upload size %d, got %v", usecase.DefaultMaxUploadBytes, resp.MUploadSize)
 	}
 }
- 

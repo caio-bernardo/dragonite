@@ -9,10 +9,11 @@ type SyncToken struct {
 	TimelinePosition int64
 	PresencePosition int64
 	ReceiptPosition  int64
+	ToDevicePosition int64
 }
 
 func (t SyncToken) Encode() string {
-	return fmt.Sprintf("s%d_%d_%d", t.TimelinePosition, t.PresencePosition, t.ReceiptPosition)
+	return fmt.Sprintf("s%d_%d_%d_%d", t.TimelinePosition, t.PresencePosition, t.ReceiptPosition, t.ToDevicePosition)
 }
 
 func (t SyncToken) MarshalJSON() ([]byte, error) {
@@ -30,13 +31,9 @@ func (t *SyncToken) UnmarshalJSON(data []byte) error {
 
 func ParseToken(t string) SyncToken {
 	var token SyncToken
-	_, err := fmt.Sscanf(t, "s%d_%d_%d", &token.TimelinePosition, &token.PresencePosition, &token.ReceiptPosition)
+	_, err := fmt.Sscanf(t, "s%d_%d_%d_%d", &token.TimelinePosition, &token.PresencePosition, &token.ReceiptPosition, &token.ToDevicePosition)
 	if err != nil {
-		return SyncToken{
-			TimelinePosition: 0,
-			PresencePosition: 0,
-			ReceiptPosition:  0,
-		}
+		return SyncToken{}
 	}
 	return token
 }

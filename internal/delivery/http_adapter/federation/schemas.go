@@ -27,6 +27,7 @@ type VerifyKey struct {
 }
 
 type TransactionRequest struct {
+	Edus           []EduEvent      `json:"edus,omitempty"`
 	Origin         string          `json:"origin"`
 	OriginServerTS int64           `json:"origin_server_ts"`
 	PDUs           []domain.Evento `json:"pdus"`
@@ -157,4 +158,54 @@ type BackfillResponse struct {
 type QueryDirectoryResponse struct {
 	RoomID  string   `json:"room_id"`
 	Servers []string `json:"servers"`
+}
+
+// user/keys/query
+
+type UserKeysQueryRequest struct {
+	DeviceKeys map[string][]string `json:"device_keys"`
+}
+
+type UserKeysQueryResponse struct {
+	DeviceKeys      map[string]map[string]json.RawMessage `json:"device_keys"`
+	MasterKeys      map[string]json.RawMessage            `json:"master_keys,omitempty"`
+	SelfSigningKeys map[string]json.RawMessage            `json:"self_signing_keys,omitempty"`
+}
+
+// DeviceKeysInfo é o formato de uma entrada de device_keys na resposta de /user/keys/query
+type DeviceKeysInfo struct {
+	Algorithms []string            `json:"algorithms"`
+	DeviceID   string              `json:"device_id"`
+	Keys       json.RawMessage     `json:"keys"`
+	Signatures json.RawMessage     `json:"signatures"`
+	Unsigned   *DeviceKeysUnsigned `json:"unsigned,omitempty"`
+	UserID     string              `json:"user_id"`
+}
+
+type DeviceKeysUnsigned struct {
+	DeviceDisplayName string `json:"device_display_name,omitempty"`
+}
+
+// CrossSigningKeyResponse é o formato de uma chave de cross-signing (master/self_signing) retornada em /user/keys/query
+type CrossSigningKeyResponse struct {
+	Keys       json.RawMessage `json:"keys"`
+	Signatures json.RawMessage `json:"signatures,omitempty"`
+	Usage      []string        `json:"usage"`
+	UserID     string          `json:"user_id"`
+}
+
+// user/keys/claim
+
+type UserKeysClaimRequest struct {
+	OneTimeKeys map[string]map[string]string `json:"one_time_keys"`
+}
+
+type UserKeysClaimResponse struct {
+	OneTimeKeys map[string]map[string]map[string]json.RawMessage `json:"one_time_keys"`
+}
+
+// EduEvent é uma EDU (Ephemeral Data Unit) genérica dentro de uma transação de federação
+type EduEvent struct {
+	Content json.RawMessage `json:"content"`
+	EduType string          `json:"edu_type"`
 }

@@ -37,6 +37,8 @@ type Handler struct {
 	idempotencyCache infrastructure.IdempotencyCache
 	presenceService  *usecase.PresenceService
 	backupService    *usecase.BackupService
+	keysService      *usecase.KeysService
+	toDeviceService  *usecase.ToDeviceService
 	serverName       string
 }
 
@@ -55,6 +57,8 @@ func NewHandler(
 	idempotencyCache infrastructure.IdempotencyCache,
 	presenceService *usecase.PresenceService,
 	backupService *usecase.BackupService,
+	keysService *usecase.KeysService,
+	toDeviceService *usecase.ToDeviceService,
 ) *Handler {
 	return &Handler{
 		serverName:       serverName,
@@ -71,6 +75,8 @@ func NewHandler(
 		idempotencyCache: idempotencyCache,
 		presenceService:  presenceService,
 		backupService:    backupService,
+		keysService:      keysService,
+		toDeviceService:  toDeviceService,
 	}
 }
 
@@ -101,12 +107,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	presenceHandler := presence.NewHandler(h.presenceService)
 	presenceHandler.RegisterRoutes(mux, authMiddleware)
 
-	// backup de chaves E2EE (server-side key backup)
-	roomKeysHandler := roomkeys.NewHandler(h.backupService)
+	// E2EE: backup de chaves + gerenciamento de chaves de dispositivo
+	roomKeysHandler := roomkeys.NewHandler(h.backupService, h.keysService)
 	roomKeysHandler.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
+	mux.Handle("PUT /_matrix/client/v3/sendToDevice/{eventType}/{txnId}", authMiddleware(http.HandlerFunc(h.sendToDevice)))
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
 	// salas em que o usuário está atualmente
@@ -124,11 +131,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("PUT /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.setRoomAlias)))
 	mux.Handle("DELETE /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.deleteRoomAlias)))
 
-	// chaves de encriptação (mock)
-	mux.Handle("POST /_matrix/client/v3/keys/upload", authMiddleware(http.HandlerFunc(h.uploadKeys)))
-	mux.Handle("POST /_matrix/client/v3/keys/query", authMiddleware(http.HandlerFunc(h.queryKeys)))
-	mux.Handle("POST /_matrix/client/v3/keys/device_signing/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
-	mux.Handle("POST /_matrix/client/v3/keys/signatures/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
 }
 
 func (h *Handler) getVersions(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +294,7 @@ func (h *Handler) getJoinedRooms(w http.ResponseWriter, r *http.Request) {
 // Pode ser usado para receber um log inicial após o login e sincronização incremental de alterações.
 func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(types.UserIDKey).(string)
+	deviceID, _ := r.Context().Value(types.DeviceIDKey).(string)
 
 	// Constroi o corpo da requisição
 	var req SyncClientRequest
@@ -313,7 +316,7 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Timeout = time.Duration(timeout) * time.Millisecond
 
-	response, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
+	response, err := h.syncService.SyncClient(r.Context(), userID, deviceID, req.Since, req.Timeout)
 	if err != nil {
 		if r.Context().Err() == context.Canceled {
 			w.WriteHeader(499)
@@ -325,6 +328,50 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// sendToDevice envia mensagens de sinalização diretamente a dispositivos específicos, sem
+// persistir no DAG da sala (majoritariamente usado pra troca de chaves E2EE)
+// PUT /_matrix/client/v3/sendToDevice/{eventType}/{txnId}
+func (h *Handler) sendToDevice(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(types.UserIDKey).(string)
+	eventType := r.PathValue("eventType")
+	txnID := r.PathValue("txnId")
+
+	if eventType == "" || txnID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing eventType or txnId")
+		return
+	}
+
+	accessToken := r.Header.Get("Authorization")
+	const endpoint = "sendToDevice"
+	if _, found := h.idempotencyCache.Get(r.Context(), accessToken, endpoint, txnID); found {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+
+	var req SendToDeviceRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Request did not contain valid JSON")
+		return
+	}
+
+	err := h.toDeviceService.Send(r.Context(), usecase.SendParams{
+		Sender:    userID,
+		EventType: eventType,
+		Messages:  req.Messages,
+	})
+	if err != nil {
+		log.Printf("[ERROR] PUT /_matrix/client/v3/sendToDevice/%s/%s (user=%s): %v", eventType, txnID, userID, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to send messages")
+		return
+	}
+
+	if err := h.idempotencyCache.Set(r.Context(), accessToken, endpoint, txnID, "ok", 24*time.Hour); err != nil {
+		log.Printf("[WARN] PUT /_matrix/client/v3/sendToDevice/%s/%s: failed to set idempotency cache: %v", eventType, txnID, err)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
 
 // resolveRoomAlias resolve um alias de sala pra room_id + servidores conhecidos
@@ -407,48 +454,4 @@ func (h *Handler) deleteRoomAlias(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
-}
-
-// uploadKeys lida com o mock de upload de chaves (E2EE) do dispositivo
-// POST /_matrix/client/v3/keys/upload
-func (h *Handler) uploadKeys(w http.ResponseWriter, r *http.Request) {
-	// A especificação exige retornar a contagem de chaves de uso único (One-Time Keys) remanescentes.
-	// Fingir que recebemos e salvamos as chaves é o suficiente para parar o spam do cliente.
-	response := map[string]any{
-		"one_time_key_counts": map[string]int{
-			"signed_curve25519": 50, // Dizemos ao Element que ele tem 50 OTKs seguras salvas
-		},
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// queryKeys lida com o mock dinâmico de busca por chaves
-// POST /_matrix/client/v3/keys/query
-func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
-	var req QueryKeysRequest
-
-	// Tentamos ler os usuários que o Element quer consultar.
-	// Se falhar ou estiver vazio, ignoramos
-	_ = httputil.ParseBody(r, &req)
-
-	deviceKeysResponse := make(map[string]map[string]any)
-	for userID := range req.DeviceKeys {
-		// Sem dispositivos criptografados
-		deviceKeysResponse[userID] = map[string]any{}
-	}
-
-	response := map[string]any{
-		"device_keys": deviceKeysResponse,
-		"failures":    map[string]any{},
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-func (h *Handler) uploadDeviceSigning(w http.ResponseWriter, r *http.Request) {
-	// Retorna 200 OK vazio para o Element achar que enviou as chaves com sucesso
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{}`))
 }

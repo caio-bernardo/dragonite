@@ -201,7 +201,6 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 
 func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, roomID, remoteServer string) error {
 	// 1. Send /make_join federation request to the remote server
-	// (You'll need a client method on s.fedService or a transport layer to do this)
 	protoEvent, err := s.fedService.MakeJoinCall(ctx, remoteServer, roomID, userID)
 	if err != nil {
 		return fmt.Errorf("federated make_join failed: %w", err)
