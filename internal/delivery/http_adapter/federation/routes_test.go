@@ -160,7 +160,7 @@ func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handl
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	profileSvc := usecase.NewProfileService(storage)
+	profileSvc := usecase.NewProfileService(storage, nil, nil, nil)
 	return NewHandler(sys, nil, nil, profileSvc, nil, nil, nil, "example.com")
 }
 

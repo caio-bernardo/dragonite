@@ -21,7 +21,7 @@ func newTestRoomMembershipService(t *testing.T, canal *roomsvcFakeCanalStorage, 
 		t.Fatalf("failed to generate test key: %v", err)
 	}
 	fedSvc := NewFederationService("example.com", "ed25519:1", priv, canal, evento, uow, nil, nil)
-	return NewRoomMembershipService(uow, canal, evento, authResolver, fedSvc, nil)
+	return NewRoomMembershipService(uow, canal, evento, authResolver, fedSvc, nil, nil)
 }
 
 //  InviteUser
