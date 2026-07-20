@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -12,6 +13,13 @@ import (
 type WellKnowServerResponse struct {
 	MServer string `json:"m.server"`
 }
+
+// FederationScheme é o esquema HTTP usado em toda chamada S2S (server-to-server) do
+// projeto: chamadas outbound em federation_service.go e a busca de chave remota em
+// FetchRemoteServerKey. A spec do Matrix exige HTTPS em produção, mas o ambiente de
+// desenvolvimento/teste ainda não tem TLS configurado entre homeservers. Mude só esta
+// constante quando TLS for configurado, não hardcode "http"/"https" em outro lugar.
+const FederationScheme = "http"
 
 // isRemoteUser returns true if the user is remote (i.e. not on the same server)
 func IsRemoteUser(userID, serverName string) bool {
@@ -30,10 +38,10 @@ func ResolveServerName(serverName string) (string, error) {
 		return serverName, nil
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
 
 	// Tentar o /.well-known/matrix/server
-	wellKnownURL := "http://" + serverName + "/.well-known/matrix/server"
+	wellKnownURL := fmt.Sprintf("%s://%s/.well-known/matrix/server", FederationScheme, serverName)
 	resp, err := client.Get(wellKnownURL)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		defer resp.Body.Close()
@@ -43,13 +51,14 @@ func ResolveServerName(serverName string) (string, error) {
 		}
 	}
 
-	// Tentar DNS SRV
-	_, addrs, err := net.LookupSRV("matrix", "tcp", serverName)
+	// Tentar DNS SRV — com timeout explícito. net.LookupSRV puro não tem timeout e é o
+	// que travava ~30s quando o hostname não resolvia de verdade (caso do dragonite.com)
+	srvCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, addrs, err := net.DefaultResolver.LookupSRV(srvCtx, "matrix", "tcp", serverName)
 	if err == nil && len(addrs) > 0 {
-		// O Go já ordena pelos pesos (Priority/Weight) do SRV
 		target := strings.TrimSuffix(addrs[0].Target, ".")
 		return fmt.Sprintf("%s:%d", target, addrs[0].Port), nil
-
 	}
 	// fallback porta 8448
 	return fmt.Sprintf("%s:8448", serverName), nil

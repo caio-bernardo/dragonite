@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 )
@@ -89,8 +90,14 @@ func GenerateS2SAuthHeader(serverName, keyID string, privateKey ed25519.PrivateK
 
 // FetchRemoteServerKey busca a chave pública ed25519 de um servidor Matrix remoto
 func FetchRemoteServerKey(serverName string) (string, ed25519.PublicKey, error) {
-	url := fmt.Sprintf("http://%s/_matrix/key/v2/server", serverName)
-	resp, err := http.Get(url)
+	targetHost, err := ResolveServerName(serverName)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to resolve server name %s: %w", serverName, err)
+	}
+
+	url := fmt.Sprintf("%s://%s/_matrix/key/v2/server", FederationScheme, targetHost)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to fetch key from %s: %w", serverName, err)
 	}
