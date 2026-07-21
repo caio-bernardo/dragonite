@@ -125,6 +125,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/user/{userId}/filter/{filterId}", authMiddleware(http.HandlerFunc(h.getFilter)))
 	// capacidades (mock)
 	mux.Handle("GET /_matrix/client/v3/capabilities", authMiddleware(http.HandlerFunc(h.getCapabilities)))
+	mux.Handle("GET /_matrix/client/v3/thirdparty/protocols", authMiddleware(http.HandlerFunc(h.getThirdPartyProtocols)))
 
 	// directory de aliases de sala
 	mux.HandleFunc("GET /_matrix/client/v3/directory/room/{roomAlias}", h.resolveRoomAlias)
@@ -219,6 +220,15 @@ func (h *Handler) getCapabilities(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// getThirdPartyProtocols é um mock que informa não haver nenhuma bridge/protocolo de
+// terceiros (IRC, Gitter, etc.) integrada a este homeserver
+// GET /_matrix/client/v3/thirdparty/protocols
+// Ref: https://spec.matrix.org/v1.19/client-server-api/#get_matrixclientv3thirdpartyprotocols
+func (h *Handler) getThirdPartyProtocols(w http.ResponseWriter, r *http.Request) {
+	response := ThirdPartyProtocolsResponse{}
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 

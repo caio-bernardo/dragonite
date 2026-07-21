@@ -255,9 +255,16 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 	// 5. ATOMIC TRANSACTION: Reconcile, Resolve, and Persist
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// A. Ensure room metadata exists locally (create stub if first time seeing it)
-		if _, err := s.canalRepo.GetByID(txCtx, roomID); err != nil {
-			// Create room metadata locally if absent
-			_, _ = s.canalRepo.Create(txCtx, roomID, protoEvent.Sender, remoteRoomVersion)
+		// GetByID retorna (nil, nil) quando a sala não existe (não é um erro!),
+		// então o check tem que ser no valor retornado, não no err.
+		existingCanal, err := s.canalRepo.GetByID(txCtx, roomID)
+		if err != nil {
+			return fmt.Errorf("failed to check existing room: %w", err)
+		}
+		if existingCanal == nil {
+			if _, err := s.canalRepo.Create(txCtx, roomID, protoEvent.Sender, remoteRoomVersion); err != nil {
+				return fmt.Errorf("failed to create local room stub: %w", err)
+			}
 		}
 
 		// B. Check if we already have any local state for this room in our DB

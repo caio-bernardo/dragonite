@@ -563,7 +563,7 @@ func (h *Handler) writePublicRooms(w http.ResponseWriter, r *http.Request, searc
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.dirService.ListPublic(ctx, searchTerm, limit, offset)
+	result, err := h.dirService.ListPublic(ctx, "", searchTerm, limit, offset)
 	if err != nil {
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
 		return

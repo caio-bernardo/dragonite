@@ -1065,6 +1065,73 @@ func (f *FederationService) QueryDirectory(ctx context.Context, remoteServer, ro
 	return result.RoomID, result.Servers, nil
 }
 
+// OutboundPublicRoomsRequest é o payload de POST /_matrix/federation/v1/publicRooms
+type OutboundPublicRoomsRequest struct {
+	Filter *OutboundPublicRoomsFilter `json:"filter,omitempty"`
+	Limit  int                        `json:"limit,omitempty"`
+	Since  string                     `json:"since,omitempty"`
+}
+
+type OutboundPublicRoomsFilter struct {
+	GenericSearchTerm string `json:"generic_search_term,omitempty"`
+}
+
+// QueryPublicRooms busca a lista de salas públicas hospedadas em remoteServer, usado quando
+// o cliente pede /publicRooms?server=<remoteServer> apontando pra um servidor que não é o nosso
+func (f *FederationService) QueryPublicRooms(ctx context.Context, remoteServer, searchTerm string, limit, offset int) (*domain.PublicRoomsChunck, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := "/_matrix/federation/v1/publicRooms"
+
+	payload := OutboundPublicRoomsRequest{Limit: limit}
+	if searchTerm != "" {
+		payload.Filter = &OutboundPublicRoomsFilter{GenericSearchTerm: searchTerm}
+	}
+	if offset > 0 {
+		payload.Since = fmt.Sprintf("%d", offset)
+	}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize publicRooms payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "POST", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign publicRooms request: %w", err)
+	}
+
+	reqURL := buildFederationURL(targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected publicRooms: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result domain.PublicRoomsChunck
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode publicRooms response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // OutboundKeysQueryRequest é o payload de POST /_matrix/federation/v1/user/keys/query
 type OutboundKeysQueryRequest struct {
 	DeviceKeys map[string][]string `json:"device_keys"`

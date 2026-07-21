@@ -94,7 +94,7 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [ ] GET/PUT/DELETE /\_matrix/client/v3/pushrules/{scope}/{kind}/{ruleId} — *regras de notificação de verdade (ex: silenciar uma sala, destacar menções), hoje só o mock vazio existe.*
 - [ ] POST /\_matrix/client/v3/pushers/set e GET /pushers — *registrar um "pusher" (endpoint de push), pré-requisito pra notificações push funcionarem de ponta a ponta junto com a Push Gateway API.*
 - [x] POST /\_matrix/client/v3/user_directory/search — *permite buscar usuários pelo diretório (nome/display name).*
-- [ ] GET /\_matrix/client/v3/thirdparty/protocols — *só relevante se formos integrar bridges de outros serviços (Telegram, IRC); baixa prioridade.*
+- [x] GET /\_matrix/client/v3/thirdparty/protocols *(mock — retorna `{}`, sem bridges reais; necessário pro seletor de rede do diretório público do Element inicializar corretamente, mesmo sem integrar bridges de verdade)*
 - [ ] POST /\_matrix/client/v3/search — *busca full-text de mensagens dentro do cliente.*
 - [ ] POST /\_matrix/client/v3/rooms/{roomId}/report e /event/{eventId}/report — *deixar usuários denunciarem conteúdo abusivo para moderação.*
 - [ ] Criptografia ponta-a-ponta (`/\_matrix/client/v3/keys/*`) — *mensagens realmente privadas entre usuários; exige gerenciamento de dispositivos e troca de chaves, escopo grande demais pro trabalho.*

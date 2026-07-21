@@ -160,6 +160,8 @@ type RemoteMediaFetcher interface {
 // federação (S2S), usado quando o domínio do alias não é o deste homeserver
 type RemoteDirectoryResolver interface {
 	QueryDirectory(ctx context.Context, remoteServer, roomAlias string) (roomID string, servers []string, err error)
+	// QueryPublicRooms busca a lista de salas públicas de remoteServer via GET/POST /_matrix/federation/v1/publicRooms
+	QueryPublicRooms(ctx context.Context, remoteServer, searchTerm string, limit, offset int) (*domain.PublicRoomsChunck, error)
 }
 
 // PresenceStorage define as operações de persistência do estado de presença dos usuários
