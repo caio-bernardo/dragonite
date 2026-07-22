@@ -26,6 +26,23 @@ type PublicRoomsResponse struct {
 	TotalRoomCountEstimate *int              `json:"total_room_count_estimate,omitempty"`
 }
 
+// POST /publicRooms
+
+// PublicRoomsRequestFilter é o filtro opcional dentro do body de POST /publicRooms
+// Ref: https://spec.matrix.org/v1.19/client-server-api/#post_matrixclientv3publicrooms
+type PublicRoomsRequestFilter struct {
+	GenericSearchTerm string `json:"generic_search_term,omitempty"`
+}
+
+// PublicRoomsRequest é o corpo de requisição de POST /publicRooms.
+type PublicRoomsRequest struct {
+	Filter               *PublicRoomsRequestFilter `json:"filter,omitempty"`
+	IncludeAllNetworks   bool                      `json:"include_all_networks,omitempty"`
+	Limit                int                       `json:"limit,omitempty"`
+	Since                string                    `json:"since,omitempty"`
+	ThirdPartyInstanceID string                    `json:"third_party_instance_id,omitempty"`
+}
+
 // POST /createRoom
 
 // InitialStateEvent representa um evento de estado a ser inserido na criação.
@@ -125,3 +142,5 @@ type StateEventFull struct {
 	Type           string          `json:"type"`
 	Unsigned       json.RawMessage `json:"unsigned,omitempty"`
 }
+
+

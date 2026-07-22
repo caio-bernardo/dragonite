@@ -19,9 +19,10 @@ type RoomMembershipService struct {
 	fedService       *FederationService
 	stateResolver    StateResolver
 	usuarioRepo      UsuarioStorage
+	notifier         Notifier
 }
 
-func NewRoomMembershipService(uow WorkUnit, canalRepo CanalStorage, eventRepo EventoStorage, authRuleResolver *AuthRuleResolver, fedService *FederationService, stateResolver StateResolver, usuarioRepo UsuarioStorage) *RoomMembershipService {
+func NewRoomMembershipService(uow WorkUnit, canalRepo CanalStorage, eventRepo EventoStorage, authRuleResolver *AuthRuleResolver, fedService *FederationService, stateResolver StateResolver, usuarioRepo UsuarioStorage, notifier Notifier) *RoomMembershipService {
 	return &RoomMembershipService{
 		uow:              uow,
 		authRuleResolver: authRuleResolver,
@@ -30,13 +31,21 @@ func NewRoomMembershipService(uow WorkUnit, canalRepo CanalStorage, eventRepo Ev
 		fedService:       fedService,
 		stateResolver:    stateResolver,
 		usuarioRepo:      usuarioRepo,
+		notifier:         notifier,
 	}
 }
 
 func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID string) error {
 	// 1. Verify they are actually in the room (or invited)
 	currentStatus, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
-	if err != nil || (currentStatus != "join" && currentStatus != "invite") {
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if currentStatus == "leave" || currentStatus == "ban" {
+		// Idempotente: já não está na sala, não é erro.
+		return nil
+	}
+	if currentStatus != "join" && currentStatus != "invite" {
 		return fmt.Errorf("user is not in a state to leave this room")
 	}
 
@@ -97,6 +106,10 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	if err != nil {
 		return err
 	}
+
+	// 5. Immediately triggers the /sync process for the user who logged out
+	s.notifier.WakeUpUsers(userID)
+
 	// local clients notified by notifier
 	// 6. Notify remote servers
 	_ = s.fedService.QueueOutgoing(ctx, *leaveEvent)
@@ -201,7 +214,7 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 
 func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, roomID, remoteServer string) error {
 	// 1. Send /make_join federation request to the remote server
-	protoEvent, err := s.fedService.MakeJoinCall(ctx, remoteServer, roomID, userID)
+	protoEvent, remoteRoomVersion, err := s.fedService.MakeJoinCall(ctx, remoteServer, roomID, userID)
 	if err != nil {
 		return fmt.Errorf("federated make_join failed: %w", err)
 	}
@@ -255,9 +268,16 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 	// 5. ATOMIC TRANSACTION: Reconcile, Resolve, and Persist
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// A. Ensure room metadata exists locally (create stub if first time seeing it)
-		if _, err := s.canalRepo.GetByID(txCtx, roomID); err != nil {
-			// Create room metadata locally if absent
-			_, _ = s.canalRepo.Create(txCtx, roomID, protoEvent.Sender)
+		// GetByID retorna (nil, nil) quando a sala não existe (não é um erro!),
+		// então o check tem que ser no valor retornado, não no err.
+		existingCanal, err := s.canalRepo.GetByID(txCtx, roomID)
+		if err != nil {
+			return fmt.Errorf("failed to check existing room: %w", err)
+		}
+		if existingCanal == nil {
+			if _, err := s.canalRepo.Create(txCtx, roomID, protoEvent.Sender, remoteRoomVersion); err != nil {
+				return fmt.Errorf("failed to create local room stub: %w", err)
+			}
 		}
 
 		// B. Check if we already have any local state for this room in our DB

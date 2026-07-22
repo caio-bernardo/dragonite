@@ -21,6 +21,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	"github.com/google/uuid"
 )
 
 // buildFederationURL monta a URL final de uma chamada S2S de forma consistente,
@@ -559,7 +560,7 @@ func (f *FederationService) ProcessSendLeave(ctx context.Context, roomID string,
 	})
 }
 
-func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, inviteEvent *domain.Evento) error {
+func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, roomVersion string, inviteEvent *domain.Evento, inviteRoomState []domain.StrippedEvento) error {
 	err := f.uow.Execute(ctx, func(txCtx context.Context) error {
 		// checa se o canal existe
 		canal, err := f.canalStore.GetByID(txCtx, roomID)
@@ -568,7 +569,7 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 		}
 
 		if canal == nil {
-			_, err := f.canalStore.Create(txCtx, roomID, inviteEvent.Sender)
+			_, err := f.canalStore.Create(txCtx, roomID, inviteEvent.Sender, roomVersion)
 			if err != nil {
 				return fmt.Errorf("could not create room: %w", err)
 			}
@@ -587,6 +588,35 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 				return fmt.Errorf("failed to upsert membership: %w", err)
 			}
 		}
+
+		// Persiste o "invite_room_state" que veio junto do convite federado
+		for _, stripped := range inviteRoomState {
+			stateKey := ""
+			if stripped.StateKey != nil {
+				stateKey = *stripped.StateKey
+			}
+
+			previewEvent := &domain.Evento{
+				ID:               fmt.Sprintf("$invite-preview-%s", uuid.NewString()),
+				Tipo:             stripped.Tipo,
+				Content:          stripped.Content,
+				CanalID:          roomID,
+				Sender:           stripped.Sender,
+				OrigemServidorTS: inviteEvent.OrigemServidorTS,
+				StateKey:         &stateKey,
+				PrevEventos:      []string{},
+				AuthEventos:      []string{},
+				Depth:            0,
+			}
+
+			if err := f.eventoStore.SaveEvento(txCtx, previewEvent); err != nil {
+				return fmt.Errorf("failed to save invite room state preview (%s): %w", stripped.Tipo, err)
+			}
+			if err := f.canalStore.UpsertCurrentState(txCtx, roomID, stripped.Tipo, stateKey, previewEvent.ID); err != nil {
+				return fmt.Errorf("failed to upsert invite room state (%s): %w", stripped.Tipo, err)
+			}
+		}
+
 		return nil
 	})
 	return err
@@ -768,10 +798,10 @@ type OutboundSendJoinResponse struct {
 }
 
 // MakeJoinCall hits GET /_matrix/federation/v1/make_join/{roomId}/{userId} on a remote host
-func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, roomID, userID string) (*domain.Evento, error) {
+func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, roomID, userID string) (*domain.Evento, string, error) {
 	targetHost, err := util.ResolveServerName(remoteServer)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Supported versions your server handles (e.g., "11" as seen in canal_storage.go)
@@ -779,34 +809,34 @@ func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, room
 
 	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "GET", uri, remoteServer, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to sign make_join request: %w", err)
+		return nil, "", fmt.Errorf("failed to sign make_join request: %w", err)
 	}
 
 	reqURL := buildFederationURL(targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Authorization", authHeader)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("remote server rejected make_join: %d - %s", resp.StatusCode, string(body))
+		return nil, "", fmt.Errorf("remote server rejected make_join: %d - %s", resp.StatusCode, string(body))
 	}
 
 	var makeJoinResult OutboundMakeJoinResponse
 	if err := json.NewDecoder(resp.Body).Decode(&makeJoinResult); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return &makeJoinResult.Event, nil
+	return &makeJoinResult.Event, makeJoinResult.RoomVersion, nil
 }
 
 // OutboundInviteRequest é o payload enviado a PUT /_matrix/federation/v2/invite/{roomId}/{eventId}
@@ -1033,6 +1063,73 @@ func (f *FederationService) QueryDirectory(ctx context.Context, remoteServer, ro
 	}
 
 	return result.RoomID, result.Servers, nil
+}
+
+// OutboundPublicRoomsRequest é o payload de POST /_matrix/federation/v1/publicRooms
+type OutboundPublicRoomsRequest struct {
+	Filter *OutboundPublicRoomsFilter `json:"filter,omitempty"`
+	Limit  int                        `json:"limit,omitempty"`
+	Since  string                     `json:"since,omitempty"`
+}
+
+type OutboundPublicRoomsFilter struct {
+	GenericSearchTerm string `json:"generic_search_term,omitempty"`
+}
+
+// QueryPublicRooms busca a lista de salas públicas hospedadas em remoteServer, usado quando
+// o cliente pede /publicRooms?server=<remoteServer> apontando pra um servidor que não é o nosso
+func (f *FederationService) QueryPublicRooms(ctx context.Context, remoteServer, searchTerm string, limit, offset int) (*domain.PublicRoomsChunck, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := "/_matrix/federation/v1/publicRooms"
+
+	payload := OutboundPublicRoomsRequest{Limit: limit}
+	if searchTerm != "" {
+		payload.Filter = &OutboundPublicRoomsFilter{GenericSearchTerm: searchTerm}
+	}
+	if offset > 0 {
+		payload.Since = fmt.Sprintf("%d", offset)
+	}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize publicRooms payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "POST", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign publicRooms request: %w", err)
+	}
+
+	reqURL := buildFederationURL(targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected publicRooms: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result domain.PublicRoomsChunck
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode publicRooms response: %w", err)
+	}
+
+	return &result, nil
 }
 
 // OutboundKeysQueryRequest é o payload de POST /_matrix/federation/v1/user/keys/query

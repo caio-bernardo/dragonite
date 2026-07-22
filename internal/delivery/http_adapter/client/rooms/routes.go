@@ -2,10 +2,13 @@ package rooms
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
@@ -47,9 +50,10 @@ func NewHandler(
 
 // RegisterRoutes registra todas as rotas de rooms no mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
-	// Não requer autenticação (spec permite listagem pública sem token)
-	mux.HandleFunc("POST /_matrix/client/v3/publicRooms", h.getPublicRooms)
+	// GET não requer autenticação (spec permite listagem pública sem token)
 	mux.HandleFunc("GET /_matrix/client/v3/publicRooms", h.getPublicRooms)
+	// POST requer autenticação, conforme a spec
+	mux.Handle("POST /_matrix/client/v3/publicRooms", authMiddleware(http.HandlerFunc(h.postPublicRooms)))
 
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/members", authMiddleware(http.HandlerFunc(h.getRoomMembers)))
 	// Requerem autenticação
@@ -80,10 +84,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 
 // getPublicRooms lista as salas públicas do servidor.
 // GET /_matrix/client/v3/publicRooms
-// Ref: https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3publicrooms
 func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
 	defer cancel()
+
+	// server: indica um servidor remoto pra listar (query param, mesmo em POST, conforme a spec)
+	server := r.URL.Query().Get("server")
 
 	// Query params: limit e since (paginação conforme o spec)
 	limitStr := r.URL.Query().Get("limit")
@@ -102,9 +108,52 @@ func (h *Handler) getPublicRooms(w http.ResponseWriter, r *http.Request) {
 		sinceInt = 0
 	}
 
-	response, err := h.directoryService.ListPublic(ctx, "", limit, sinceInt)
+	response, err := h.directoryService.ListPublic(ctx, server, "", limit, sinceInt)
 	if err != nil {
 		log.Printf("[ERROR] GET /publicRooms: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to list rooms")
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// postPublicRooms lista as salas públicas de um servidor com um filtro opcional no body
+// POST /_matrix/client/v3/publicRooms
+func (h *Handler) postPublicRooms(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	// server: mesmo no POST, é sempre query param, conforme a spec
+	server := r.URL.Query().Get("server")
+
+	var req PublicRoomsRequest
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Invalid request body")
+			return
+		}
+	}
+
+	searchTerm := ""
+	if req.Filter != nil {
+		searchTerm = req.Filter.GenericSearchTerm
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 50 // default do spec
+	}
+
+	offset := 0
+	if req.Since != "" {
+		if parsed, err := strconv.Atoi(req.Since); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	response, err := h.directoryService.ListPublic(ctx, server, searchTerm, limit, offset)
+	if err != nil {
+		log.Printf("[ERROR] POST /publicRooms: %v", err)
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to list rooms")
 		return
 	}
@@ -199,9 +248,10 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// r.PathValue extrai parâmetros de rota do padrão {roomId}
-	roomID := r.PathValue("roomId")
-	if roomID == "" {
+	// r.PathValue extrai parâmetros de rota do padrão {roomId} — mas o spec permite
+	// tanto um room_id (!xxx:servidor) quanto um alias (#nome:servidor) aqui
+	roomIdentifier := r.PathValue("roomId")
+	if roomIdentifier == "" {
 		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing roomId")
 		return
 	}
@@ -210,9 +260,37 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 	var req JoinRoomRequest
 	_ = httputil.ParseBody(r, &req)
 
+	// servidores candidatos indicados pelo cliente (via=... pode repetir; server_name é o formato legado)
+	knownServers := r.URL.Query()["via"]
+	if sn := r.URL.Query().Get("server_name"); sn != "" {
+		knownServers = append(knownServers, sn)
+	}
+
+	roomID := roomIdentifier
+
+	// Se for um alias, resolve pro room_id real ANTES de qualquer chamada federada —
+	// make_join/send_join exigem o room_id, um alias não é resolvível nesses endpoints.
+	if strings.HasPrefix(roomIdentifier, "#") {
+		resolvedID, servers, err := h.directoryService.ResolveAlias(ctx, roomIdentifier)
+		if err != nil {
+			log.Printf("[ERROR] POST /join/%s: failed to resolve alias: %v", roomIdentifier, err)
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Room alias not found")
+			return
+		}
+		roomID = resolvedID
+		knownServers = append(knownServers, servers...)
+	}
+
 	if util.IsRemoteUser(roomID, h.serverName) {
-		// Extract the remote server name from the room handle (e.g. extracts "example.com" from "#public:example.com")
+		// Extrai o domínio do room_id como candidato padrão, mas prioriza um servidor
+		// conhecido/indicado explicitamente (via alias resolution ou query params)
 		remoteServer := util.ExtractDomainFromUserID(roomID)
+		for _, s := range knownServers {
+			if s != "" && s != h.serverName {
+				remoteServer = s
+				break
+			}
+		}
 		if remoteServer == "" {
 			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "Could not resolve remote server from room identifier")
 			return
@@ -221,6 +299,7 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 		// Execute the Outbound Federated Join
 		err := h.roomMembershipService.JoinRemoteRoom(ctx, userID, roomID, remoteServer)
 		if err != nil {
+			log.Printf("[ERROR] POST /join/%s: federated join failed: %v", roomIdentifier, err)
 			httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to federate join remote room")
 			return
 		}

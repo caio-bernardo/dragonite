@@ -563,7 +563,7 @@ func (h *Handler) writePublicRooms(w http.ResponseWriter, r *http.Request, searc
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.dirService.ListPublic(ctx, searchTerm, limit, offset)
+	result, err := h.dirService.ListPublic(ctx, "", searchTerm, limit, offset)
 	if err != nil {
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
 		return
@@ -931,8 +931,21 @@ func (h *Handler) putInvite(w http.ResponseWriter, r *http.Request) {
 	contentBytes, _ := util.CanonicalJSON(content)
 	evento.Content = contentBytes
 
-	// Salva o evento
-	err := h.fedService.ProcessInvite(r.Context(), roomID, &evento)
+	// Converte o invite_room_state recebido (formato de wire) pro tipo interno
+	inviteRoomState := make([]domain.StrippedEvento, 0, len(req.InviteRoomState))
+	for _, sse := range req.InviteRoomState {
+		stateKey := sse.StateKey
+		inviteRoomState = append(inviteRoomState, domain.StrippedEvento{
+			Tipo:     sse.Type,
+			Content:  sse.Content,
+			StateKey: &stateKey,
+			Sender:   sse.Sender,
+		})
+	}
+
+	// Salva o evento (e a prévia de estado da sala, se veio alguma)
+	err := h.fedService.ProcessInvite(r.Context(), roomID, req.RoomVersion, &evento, inviteRoomState)
+	
 	if err != nil {
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
 		return

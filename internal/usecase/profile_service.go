@@ -17,10 +17,10 @@ type FederationClient interface {
 type ProfileService struct {
 	userStore              UsuarioStorage
 	canalStore             CanalStorage
-	roomMembershipService  *RoomMembershipService  // <-- Campo novo
-	roomInteractionService *RoomInteractionService // <-- Campo novo
-	fedClient              FederationClient        // <-- Campo novo
-	serverName             string                  // <-- Campo novo
+	roomMembershipService  *RoomMembershipService  
+	roomInteractionService *RoomInteractionService 
+	fedClient              FederationClient        
+	serverName             string                  
 }
 
 func NewProfileService(userStore UsuarioStorage, canalStore CanalStorage, roomMembershipService *RoomMembershipService, roomInteractionService *RoomInteractionService, fedClient FederationClient, serverName string) *ProfileService {

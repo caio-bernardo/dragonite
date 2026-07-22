@@ -52,7 +52,7 @@ type UsuarioStorage interface {
 }
 
 type CanalStorage interface {
-	Create(ctx context.Context, roomID, userID string) (*domain.Canal, error)
+	Create(ctx context.Context, roomID, userID string, roomVersion string) (*domain.Canal, error)
 	// Get all unique servers from users in the room
 	GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error)
 	GetByID(ctx context.Context, canalID string) (*domain.Canal, error)
@@ -119,6 +119,7 @@ type DirectoryStorage interface {
 
 type Notifier interface {
 	WaitForEvents(ctx context.Context, userID string) error
+	WakeUpUsers(userID string)
 }
 
 // Executes operations inside a transaction. Commit if succeeds or rollback in failure
@@ -160,6 +161,8 @@ type RemoteMediaFetcher interface {
 // federação (S2S), usado quando o domínio do alias não é o deste homeserver
 type RemoteDirectoryResolver interface {
 	QueryDirectory(ctx context.Context, remoteServer, roomAlias string) (roomID string, servers []string, err error)
+	// QueryPublicRooms busca a lista de salas públicas de remoteServer via GET/POST /_matrix/federation/v1/publicRooms
+	QueryPublicRooms(ctx context.Context, remoteServer, searchTerm string, limit, offset int) (*domain.PublicRoomsChunck, error)
 }
 
 // PresenceStorage define as operações de persistência do estado de presença dos usuários

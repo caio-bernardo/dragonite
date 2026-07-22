@@ -31,7 +31,7 @@ func (s *PostgresStorage) GetSince(ctx context.Context, userID string, since dom
 		WHERE stream_ordering > $2 AND (
 			id_canal IN (
 				SELECT id_canal FROM Canal_Membership
-				WHERE id_usuario = $1
+				WHERE id_usuario = $1  AND membership_type IN ('join', 'invite')
 			)
 			OR
 			(tipo = 'm.room.member' AND state_key = $1)
@@ -114,9 +114,10 @@ func (s *PostgresStorage) GetEventsOfCanalSinceLeft(ctx context.Context, userID 
 		FROM Evento e
 		WHERE e.id_canal = $2
 		  AND e.stream_ordering > $3
-		  AND EXISTS (
-		    SELECT 1
+		  AND e.stream_ordering <= (
+		    SELECT ev.stream_ordering
 		    FROM Canal_Membership cm
+		    JOIN Evento ev ON ev.id_evento = cm.id_evento
 		    WHERE cm.id_usuario = $1
 		      AND cm.id_canal = $2
 		      AND cm.membership_type = 'leave'

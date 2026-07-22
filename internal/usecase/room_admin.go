@@ -128,7 +128,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 
 	err := s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// cria o metadados da sala
-		if _, err := s.canalStore.Create(txCtx, roomID, props.CreatorID); err != nil {
+		if _, err := s.canalStore.Create(txCtx, roomID, props.CreatorID, version); err != nil {
 			return err
 		}
 
