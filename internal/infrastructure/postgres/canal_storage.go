@@ -74,6 +74,24 @@ func (s *PostgresStorage) GetCanalEstadoAtual(ctx context.Context, canalID strin
 	return estadoAtual, nil
 }
 
+func (s *PostgresStorage) GetByAlias(ctx context.Context, roomID string) (*domain.Canal, error) {
+	row := s.db.QueryRow(ctx, `
+        SELECT c.id_canal, versao_canal, criador, created_at
+        FROM Canal c
+        JOIN Canal_Alias ca on ca.id_canal = c.id_canal
+        WHERE ca.alias = $1
+        `,
+		roomID)
+
+	var canal domain.Canal
+	err := row.Scan(&canal.ID, &canal.Versao, &canal.Criador, &canal.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get canal by alias: %w", err)
+	}
+
+	return &canal, nil
+}
+
 func (s *PostgresStorage) GetJoinRule(ctx context.Context, roomID string) (string, error) {
 	row := s.db.QueryRow(ctx, `
         SELECT e.content->>'join_rule'
@@ -86,9 +104,6 @@ func (s *PostgresStorage) GetJoinRule(ctx context.Context, roomID string) (strin
 	var rule string
 	err := row.Scan(&rule)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return "invite", nil
-		}
 		return "", fmt.Errorf("failed to get join rule: %w", err)
 	}
 
