@@ -117,10 +117,16 @@ func (s *DirectoryService) DeleteAlias(ctx context.Context, alias string) error 
 	return s.dirStore.DeleteAlias(ctx, alias)
 }
 
-func (s *DirectoryService) ListPublic(ctx context.Context, term string, limit int, offset int) (*domain.PublicRoomsChunck, error) {
+func (s *DirectoryService) ListPublic(ctx context.Context, server, term string, limit int, offset int) (*domain.PublicRoomsChunck, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
+
+	// Se o server pedido não é o nosso, delega via federação em vez de consultar o banco local
+	if server != "" && server != s.serverName {
+		return s.remoteQuery.QueryPublicRooms(ctx, server, term, limit, offset)
+	}
+
 	// busca limit+1 para detectar se há próxima página
 	entries, totalCount, err := s.dirStore.SearchDirectory(ctx, term, limit+1, offset)
 	if err != nil {

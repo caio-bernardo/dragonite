@@ -72,7 +72,7 @@ func main() {
 	stateResolver := usecase.NewStateResolverService(authRuleResolver)
 	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage, authRuleResolver, stateResolver, federationCache)
 	dirService := usecase.NewDirectoryService(storage, storage, storage, fedService, config.ServerName)
-	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver, fedService, stateResolver, storage)
+	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver, fedService, stateResolver, storage, notifier)
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage, storage, roomMembershipService)
 	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
 	fedClient := federation.NewFederationClient()

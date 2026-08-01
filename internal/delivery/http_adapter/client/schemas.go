@@ -36,6 +36,30 @@ type RoomVersionsCapability struct {
 	Available map[string]string `json:"available"` // obrigatório
 }
 
+// Resposta de GET /_matrix/client/v3/thirdparty/protocols (mock — nenhum protocolo/bridge suportado)
+type ThirdPartyProtocolsResponse map[string]ThirdPartyProtocol
+
+type ThirdPartyProtocol struct {
+	Icon           string                        `json:"icon"`
+	FieldTypes     map[string]ThirdPartyFieldType `json:"field_types"`
+	Instances      []ThirdPartyProtocolInstance   `json:"instances"`
+	LocationFields []string                       `json:"location_fields"`
+	UserFields     []string                       `json:"user_fields"`
+}
+
+type ThirdPartyFieldType struct {
+	Placeholder string `json:"placeholder"`
+	Regexp      string `json:"regexp"`
+}
+
+type ThirdPartyProtocolInstance struct {
+	Desc       string         `json:"desc"`
+	Fields     map[string]any `json:"fields"`
+	Icon       string         `json:"icon,omitempty"`
+	InstanceID string         `json:"instance_id"`
+	NetworkID  string         `json:"network_id"`
+}
+
 // Corpo da requisição POST /_matrix/client/v3/user_directory/search
 type UserSearchRequest struct {
 	SearchTerm string `json:"search_term"` // obrigatório pela spec

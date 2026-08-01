@@ -173,6 +173,10 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, deviceID st
 	nextBatch.ToDevicePosition = response.NextBatch.ToDevicePosition
 	response.NextBatch = nextBatch
 
+	if b, err := json.Marshal(response); err == nil {
+    log.Printf("SYNC RESPONSE for %s: %s", userID, string(b))
+    }
+
 	return response, nil
 }
 
@@ -268,7 +272,7 @@ func (s *SyncService) GetEventsSince(ctx context.Context, userID string, deviceI
 	return SyncClientResponse{
 		AccountData:    SyncAccountData{Events: accountData},
 		DeviceOTKCount: otkCounts,
-		NextBatch:      since,
+		NextBatch:      nextBatchSoFar,
 		Rooms: RoomsSync{
 			Invite: mapInvites,
 			Join:   mapJoined,
@@ -313,6 +317,16 @@ func (s *SyncService) getToDeviceSync(ctx context.Context, userID, deviceID stri
 	return &ToDeviceSync{Events: events}, maxID, nil
 }
 
+var relevantInviteStateTypes = []string{
+	"m.room.create",
+	"m.room.join_rules",
+	"m.room.canonical_alias",
+	"m.room.name",
+	"m.room.avatar",
+	"m.room.topic",
+	"m.room.encryption",
+}
+
 func (s *SyncService) GetInviteRooms(ctx context.Context, userID string, since domain.SyncToken) (map[string]InvitedRoom, error) {
 	inviteEvents, err := s.userStore.GetInviteEventsSince(ctx, userID, since)
 	if err != nil {
@@ -321,7 +335,7 @@ func (s *SyncService) GetInviteRooms(ctx context.Context, userID string, since d
 
 	mapInvites := make(map[string]InvitedRoom)
 	for _, event := range inviteEvents {
-		s := domain.StrippedEvento{
+		strippedMembership := domain.StrippedEvento{
 			Tipo:     event.Tipo,
 			Content:  event.Content,
 			StateKey: event.StateKey,
@@ -331,14 +345,38 @@ func (s *SyncService) GetInviteRooms(ctx context.Context, userID string, since d
 		if !exists {
 			room = InvitedRoom{
 				InviteState: InviteState{
-					Events: []domain.StrippedEvento{},
+					Events: s.buildInviteStatePreview(ctx, event.CanalID),
 				},
 			}
 		}
-		room.InviteState.Events = append(room.InviteState.Events, s)
+		room.InviteState.Events = append(room.InviteState.Events, strippedMembership)
 		mapInvites[event.CanalID] = room
 	}
 	return mapInvites, nil
+}
+
+// buildInviteStatePreview busca o nome/tópico/avatar/etc. da sala convidada, seja do estado
+// real (convite local, onde já somos participantes do DAG) seja do preview persistido a
+// partir de invite_room_state
+func (s *SyncService) buildInviteStatePreview(ctx context.Context, roomID string) []domain.StrippedEvento {
+	stripped := make([]domain.StrippedEvento, 0, len(relevantInviteStateTypes))
+	for _, t := range relevantInviteStateTypes {
+		eventID, found := s.canalStore.GetStateEventID(ctx, roomID, t, "")
+		if !found {
+			continue
+		}
+		ev, err := s.eventStore.GetEvento(ctx, eventID)
+		if err != nil || ev == nil {
+			continue
+		}
+		stripped = append(stripped, domain.StrippedEvento{
+			Tipo:     ev.Tipo,
+			Content:  ev.Content,
+			StateKey: ev.StateKey,
+			Sender:   ev.Sender,
+		})
+	}
+	return stripped
 }
 
 func (s *SyncService) GetJoinedRooms(ctx context.Context, userID string, since domain.SyncToken) (map[string]JoinedRoom, error) {
