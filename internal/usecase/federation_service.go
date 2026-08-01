@@ -142,7 +142,7 @@ func (f *FederationService) sendWithRetry(dest string, event domain.Evento) {
 		time.Sleep(time.Duration(2<<i) * time.Second)
 	}
 
-	log.Printf("[Federation] Max reties exausted for %s. Moving to %s pending queue", dest, event.ID)
+	log.Printf("[Federation] Max retries exausted for %s. Moving to %s pending queue", dest, event.ID)
 	f.storePendingRetry(dest, event)
 }
 
@@ -237,6 +237,7 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 		return fmt.Errorf("evento com ID incorreto: esperado %s, encontrado %s", expectedID, pdu.ID)
 	}
 	// Tenta dar flush nas que podem estar acumuladas para aquela origem de modo assíncrono.
+	log.Printf("[Federation] Flushing pending retries for %s", origin)
 	go f.FlushPendingRetries(origin)
 
 	// TODO: verificar a assinatura do evento, remover signatures e verificar a chave pública do servidor

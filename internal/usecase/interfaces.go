@@ -74,6 +74,7 @@ type CanalStorage interface {
 	UpdateForwardExtremities(ctx context.Context, canalID string, newEventID string, prevEvents []string) error
 	GetForwardExtremities(ctx context.Context, canalID string) ([]string, error)
 	SaveAlias(ctx context.Context, roomID, fullAlias string) error
+	GetByAlias(ctx context.Context, roomID string) (*domain.Canal, error)
 }
 
 type EventoStorage interface {

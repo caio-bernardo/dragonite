@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -118,7 +119,18 @@ func (s *RoomMembershipService) GetJoinedRooms(ctx context.Context, userID strin
 	return roomIDs, nil
 }
 
-func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomID string) error {
+func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, room string) error {
+
+	var roomID string
+	if strings.HasPrefix(room, "#") {
+		canal, err := s.canalRepo.GetByAlias(ctx, room)
+		if err != nil {
+			return fmt.Errorf("M_INVALID_ROOM_ALIAS: %w", err)
+		}
+		roomID = canal.ID
+	} else {
+		roomID = room
+	}
 
 	// 1. Fetch the Join Rules
 	joinRule, err := s.canalRepo.GetJoinRule(ctx, roomID)
